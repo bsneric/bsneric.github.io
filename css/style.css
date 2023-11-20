@@ -210,10 +210,10 @@ div {
   text-align: center;
 }
 #sidebar .widget .author-info a.info-avatar img {
-  border-radius: 50%;
+  border-radius: 0%;
   padding: 4px;
-  width: 96px;
-  height: 96px;
+  width: 200px;
+  height: 100px;
   background-color: transparent;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
 }
