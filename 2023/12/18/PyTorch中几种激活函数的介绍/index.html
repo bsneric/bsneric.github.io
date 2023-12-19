@@ -5,7 +5,7 @@
 <p>Sigmoid函数具有明显的优势。首先，Sigmoid函数限定了神经元的输出范围在0～1，在一些问题中，这种形式的输出可以被看作概率取值。其次，当神经网络的损失函数取交叉熵时，S函数可用于输入数据的归一化操作，且交叉熵与Sigmoid函数的配合能够有效改善算法迭代速度慢的问题。</p>
 <h2 id="Tanh激活函数"><a href="#Tanh激活函数" class="headerlink" title="Tanh激活函数"></a>Tanh激活函数</h2><p>Tanh是双曲函数中的一个，Tanh()为双曲正切。在数学中，双曲正切Tanh是由基本双曲函数双曲正弦和双曲余弦推导而来的，其公式如下：</p>
 <p><img src="https://images.liuguodong.cn/hexo/image-20231219101406387.png" alt="image-20231219101406387"></p>
-<p><strong>分类任务中，Tanh激活函数正逐渐取代Sigmoid激活函数成为神经网络的激活函数。</strong> 根据图像可以看出，他关于原点对称，解决了Sigmoid函数中输出值都为正数的问题，而其他属性基本都与Sigmoid函数相同，具有连续性和可微性。<br><img src="ahttps://images.liuguodong.cn/hexo/image-20231219101427398.png" alt="image-20231219101427398"><br>Tanh函数关于原点对称，是一个0均值的函数，这是它较之Sigmod函数有所改进的地方。Sigmoid函数的输出具有偏移现象，即输出均为大于0的实值。而Tanh的输出则均匀地分布在y轴两侧。<strong>生物神经元的激活具有稀疏性，而Tanh函数的输出结果更趋于0，从而使人工神经网络更接近生物自然状态</strong>。</p>
+<p><strong>分类任务中，Tanh激活函数正逐渐取代Sigmoid激活函数成为神经网络的激活函数。</strong> 根据图像可以看出，他关于原点对称，解决了Sigmoid函数中输出值都为正数的问题，而其他属性基本都与Sigmoid函数相同，具有连续性和可微性。<br><img src="https://images.liuguodong.cn/hexo/image-20231219101427398.png" alt="image-20231219101427398"><br>Tanh函数关于原点对称，是一个0均值的函数，这是它较之Sigmod函数有所改进的地方。Sigmoid函数的输出具有偏移现象，即输出均为大于0的实值。而Tanh的输出则均匀地分布在y轴两侧。<strong>生物神经元的激活具有稀疏性，而Tanh函数的输出结果更趋于0，从而使人工神经网络更接近生物自然状态</strong>。</p>
 <h2 id="ReLU激活函数"><a href="#ReLU激活函数" class="headerlink" title="ReLU激活函数"></a>ReLU激活函数</h2><p>2001年，线性分段激活函数ReLU（Rectified Linear Unit）首次被提出，伴随深度神经网络的产生而兴起，其公式如下：</p>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">f(x)=max(0,x)</span><br></pre></td></tr></table></figure>
 
