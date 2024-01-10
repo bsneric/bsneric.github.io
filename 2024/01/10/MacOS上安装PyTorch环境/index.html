@@ -1,0 +1,94 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>MacOS上安装PyTorch环境 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">MacOS上安装PyTorch环境</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">MacOS上安装PyTorch环境</h1><div class="post-meta">2024-01-10<span> | </span><span class="category"><a href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></span></div><div class="post-content"><p>本地化安装 PyTorch 环境需要以下几个步骤</p>
+<ol>
+<li>安装Anaconda</li>
+<li>创建并激活虚拟环境</li>
+<li>安装 PyTorch 库</li>
+<li>安装 TensorBoard 库</li>
+<li>安装 Graphviz 软件和 TorchViz 库（可选）</li>
+<li>安装 git 并clone 资源</li>
+<li>启动 Jupyter notebook</li>
+</ol>
+<p>接下来我们一步步的完成上述的安装过程</p>
+<h2 id="安装Anaconda"><a href="#安装Anaconda" class="headerlink" title="安装Anaconda"></a>安装Anaconda</h2><p>Anaconda 的下载地址为</p>
+<ul>
+<li>•</li>
+</ul>
+<p>After installing Anaconda, it is time to create an <strong>environment</strong>.<br><strong>2. Conda (Virtual) Environments</strong></p>
+<p>Windows (<em><a target="_blank" rel="noopener" href="https://docs.anaconda.com/anaconda/install/windows/">https://docs.anaconda.com/anaconda/install/windows/</a></em>)<br>macOS (<em><a target="_blank" rel="noopener" href="https://docs.anaconda.com/anaconda/install/mac-os/">https://docs.anaconda.com/anaconda/install/mac-os/</a></em>)<br>Linux (<em><a target="_blank" rel="noopener" href="https://docs.anaconda.com/anaconda/install/linux/">https://docs.anaconda.com/anaconda/install/linux/</a></em>)</p>
+<p>我们选择安装 macOS 版本的，然后根据安装向导一步步安装，记住一定要安装 Python3.0 版本的。</p>
+<p>安装完成后就可以创建一个虚拟环境了。</p>
+<h2 id="创建Conda-虚拟环境"><a href="#创建Conda-虚拟环境" class="headerlink" title="创建Conda 虚拟环境"></a>创建Conda 虚拟环境</h2><p>虚拟环境是一个隔离 Python 安装环境的好方法，通过这种方式你可以在电脑上安装不同版本依赖的 Python 环境，而不会出现不同Python 依赖的冲突。我应该总是为每个项目创建一个单独的虚拟环境，避免被其他项目的依赖“污染”。</p>
+<p>要创建一个虚拟环境，我们要给这个环境取个名字，比如 pytochbook,然后输入下面的命令</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda create -n pytorchbook anaconda</span><br></pre></td></tr></table></figure>
+
+<p>上面的代码会创建一个名为 pytorchbook 的虚拟环境，并安装所有 Anacongda 的依赖包，这会还几分钟时间。安装完毕后我们就可以激活这个虚拟环境了，使用下面的命令：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda activate pytorchbook</span><br></pre></td></tr></table></figure>
+
+<p>这是就进入了我们创建的这个pytorchbook 虚拟环境</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$(pytorchbook)</span><br></pre></td></tr></table></figure>
+
+<p>以后开始写代码的时候，我们应该每次都进入这个虚拟环境，然后所有的依赖都基于这个虚拟环境安装。</p>
+<p>如果要退出虚拟环境，输入下面的命令：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda deactivate</span><br></pre></td></tr></table></figure>
+
+<p>接下来我们开始安装第一个依赖 PyTorch。</p>
+<h2 id="安装-PyTorch"><a href="#安装-PyTorch" class="headerlink" title="安装 PyTorch"></a>安装 PyTorch</h2><p>PyTorch 是一个开源的机器学习框架，可以加速从研究模型到产品化的开发过程。接下来我们开始安装它。打开网址：<a target="_blank" rel="noopener" href="https://pytorch.org/get-started/locally/">https://pytorch.org/get-started/locally/</a> 然后如下图选择适合你的操作系统的安装环境，我们在这里选择 </p>
+<ul>
+<li>PyTorch Build：Stable</li>
+<li>Your OS：Mac</li>
+<li>Package：Conda</li>
+<li>Language：Python</li>
+<li>CUDA：Default（我的计算机上没有 GPU，所以选择Default）</li>
+</ul>
+<p>然后会根据你的选择生成一个命令如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda install pytorch::pytorch torchvision torchaudio -c pytorch</span><br></pre></td></tr></table></figure>
+
+<p>在命令行程序中执行这个命令即可。</p>
+<p>注意，执行上面的命令会从网络下载相关的依赖，因为国内网络的环境的原因，我们需要为 Anaconda 设置镜像，输入下面的命令配置清华的镜像：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">conda config --add channels conda config --add channels https://mirrors.pku.edu.cn/anaconda/pkgs/main/</span><br><span class="line">conda config --add channels conda config --add channels https://mirrors.pku.edu.cn/anaconda/cloud/conda-forge/</span><br><span class="line">conda config --add channels conda config --add channels https://mirrors.pku.edu.cn/anaconda/cloud/bioconda/</span><br></pre></td></tr></table></figure>
+
+<p>其他一些常用的配置操作</p>
+<p>显示添加的通道</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda config --show-sources</span><br></pre></td></tr></table></figure>
+
+<p>移除某个镜像</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda config --remove channels 源名称或链接</span><br></pre></td></tr></table></figure>
+
+<p>显示检索路径，每次安装包时会将包源路径显示出来</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">conda config --<span class="built_in">set</span> show_channel_urls yes</span><br><span class="line">conda config --<span class="built_in">set</span> always_yes <span class="literal">True</span></span><br></pre></td></tr></table></figure>
+
+<p>注意，经过上述配置可能还是会很慢，这时候我们可以使用 pip 安装</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pip install torch -i https://mirrors.aliyun.com/pypi/simple/</span><br><span class="line">pip install torchvision -i https://mirrors.aliyun.com/pypi/simple/</span><br></pre></td></tr></table></figure>
+
+<h2 id="安装-TensorBoard"><a href="#安装-TensorBoard" class="headerlink" title="安装 TensorBoard"></a>安装 TensorBoard</h2><p>TensorBoard 是一个 TensorFlow 的可视化工具，为机器学习提供了可视化显示和必要的工具。TensorBoard是一个非常好的工具，我们无需安装整个 TensorFlow 就可以使用它，哪怕是基于 PyTorch 的机器学习。</p>
+<p>我们可以使用 conda 命令来安装它</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conda install -c conda-forge tensorboard</span><br></pre></td></tr></table></figure>
+
+<h2 id="安装GraphViz和Torchviz"><a href="#安装GraphViz和Torchviz" class="headerlink" title="安装GraphViz和Torchviz"></a>安装GraphViz和Torchviz</h2><p>GraphViz 是一个开源的图形可视化软件，我们可以安装 GraphViz 来使用 TorchViz 将模型的训练过程展现出来。</p>
+<p>打开这个网址 <em><a target="_blank" rel="noopener" href="https://www.graphviz.org/download/">https://www.graphviz.org/download/</a> 选择 Mac 版本安装。因为我的电脑上安装了 Brew 所以可以通过下面的命令安装</em></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">brew install graphviz</span><br></pre></td></tr></table></figure>
+
+<p>安装完成之后，我们需要安装 tochviz,这个不在 Anaconda 中，我们使用 pip 安装</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pip install torchviz</span><br></pre></td></tr></table></figure>
+
+<p>最后，我们来验证一下安装是否正确，打开 Python 命令行输入下面的代码</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&gt;&gt;&gt; </span><span class="keyword">import</span> torch</span><br><span class="line"><span class="meta">&gt;&gt;&gt; </span><span class="keyword">from</span> torchviz <span class="keyword">import</span> make_dot</span><br><span class="line"><span class="meta">&gt;&gt;&gt; </span>v=torch.tensor(<span class="number">1.0</span>,requires_grad=<span class="literal">True</span>)</span><br><span class="line"><span class="meta">&gt;&gt;&gt; </span>make_dot(v)</span><br></pre></td></tr></table></figure>
+
+<p>不出问题的话，会输出下面的内容：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&lt;graphviz.graphs.Digraph <span class="built_in">object</span> at <span class="number">0x11289df10</span>&gt;</span><br></pre></td></tr></table></figure>
+
+<h2 id="安装Git"><a href="#安装Git" class="headerlink" title="安装Git"></a>安装Git</h2><p>这个在网上有很多教程，在MacOS 下安装 Git 我使用 brew</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">brew install git</span><br></pre></td></tr></table></figure>
+
+<p>接下来我们在 Github 上创建一个开源项目，后续的代码可以通过 github 来管理，把这个项目克隆下来：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git clone https://github.com/bsneric/pytorch-learning.git</span><br></pre></td></tr></table></figure>
+
+<h2 id="安装-Jupyter"><a href="#安装-Jupyter" class="headerlink" title="安装 Jupyter"></a>安装 Jupyter</h2><p>克隆了项目之后，我们可以在项目文件夹下使用 Jupyer，这个在 Anaconda 中已经预装了，我们输入下面的命令</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">jupyter notebook</span><br></pre></td></tr></table></figure>
+
+<p>命令执行后，你会看到一个服务被启动了，这是 Jupyter 服务，并且默认会打开浏览器进入 Jupyter 的主页，如下：</p>
+<p>如果要给 jupyter notebook 设置密码，输入下面的命令</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">jupyter notebook password</span><br></pre></td></tr></table></figure>
+
+<p>完成以上步骤后，我们就可以进行 PyTorch 的编程了。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Anaconda/" rel="tag">Anaconda</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/PyTorch/" rel="tag">PyTorch</a></li></ul></div><div class="post-nav"><a class="next" href="/2024/01/09/%E5%86%99%E4%B8%80%E6%AE%B5%E7%A8%8B%E5%BA%8F%E8%AE%A9GPT%E5%86%99%E9%A6%96%E8%AF%97/">写一段程序让GPT写首诗</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/01/10/MacOS%E4%B8%8A%E5%AE%89%E8%A3%85PyTorch%E7%8E%AF%E5%A2%83/">MacOS上安装PyTorch环境</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/09/%E5%86%99%E4%B8%80%E6%AE%B5%E7%A8%8B%E5%BA%8F%E8%AE%A9GPT%E5%86%99%E9%A6%96%E8%AF%97/">写一段程序让GPT写首诗</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/08/%E4%BD%BF%E7%94%A8BERT%E5%AE%9E%E7%8E%B0%E4%B8%AD%E6%96%87%E5%8F%A5%E5%AD%90%E5%85%B3%E8%81%94%E6%8E%A8%E6%96%AD/">使用BERT实现中文句子关联推断</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/08/%E4%BD%BF%E7%94%A8BERT%E5%AE%9E%E7%8E%B0%E4%B8%AD%E6%96%87%E6%83%85%E6%84%9F%E5%88%86%E7%B1%BB/">使用BERT实现中文情感分类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/06/HuggingFace%E4%B8%AD%E4%BD%BF%E7%94%A8%E8%AE%AD%E7%BB%83%E5%B7%A5%E5%85%B7/">HuggingFace中使用训练工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/04/HuggingFace%E4%B8%AD%E7%AE%A1%E9%81%93%E5%B7%A5%E5%85%B7%E7%9A%84%E4%BD%BF%E7%94%A8/">HuggingFace中管道工具的使用</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/03/HuggingFace%E4%B8%AD%E7%9A%84%E8%AF%84%E4%BB%B7%E6%8C%87%E6%A0%87%E5%B7%A5%E5%85%B7/">HuggingFace中的评价指标工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/02/HuggingFace%E6%95%B0%E6%8D%AE%E9%9B%86%E6%93%8D%E4%BD%9C/">HuggingFace 的数据集操作</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/02/%E4%BD%BF%E7%94%A8BERT%E7%9A%84%E4%B8%AD%E6%96%87%E7%BC%96%E7%A0%81%E5%B7%A5%E5%85%B7/">使用BERT的中文编码工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2023/12/18/%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%E4%B8%AD%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0/">深度学习神经网络中为什么需要激活函数</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
