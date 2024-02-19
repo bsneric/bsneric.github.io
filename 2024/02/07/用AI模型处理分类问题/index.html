@@ -1,0 +1,646 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>用AI模型处理分类问题 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">用AI模型处理分类问题</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">用AI模型处理分类问题</h1><div class="post-meta">2024-02-07<span> | </span><span class="category"><a href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></span></div><div class="post-content"><p>本文我们将学习以下内容：</p>
+<ul>
+<li>创建一个用于二元分类的模型</li>
+<li>理解 logits 的概念，以及它是如何与概率关联的</li>
+<li>使用二元交叉损失函数来训练模型</li>
+<li>使用损失函数来处理不平衡数据集</li>
+<li>理解决策边界和可分离性的概念</li>
+<li>理解分类阈值的选择如何影响评估指标</li>
+<li>创建一个 ROC 和精确回归曲线</li>
+</ul>
+<p>本文的学习我们要使用到以下 Python 依赖：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> numpy <span class="keyword">as</span> np</span><br><span class="line"><span class="keyword">import</span> datetime</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="keyword">import</span> torch.functional <span class="keyword">as</span> F</span><br><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader,TensorDataset,random_split</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> sklearn.datasets <span class="keyword">import</span> make_moons</span><br><span class="line"><span class="keyword">from</span> sklearn.preprocessing <span class="keyword">import</span> StandardScaler</span><br><span class="line"><span class="keyword">from</span> sklearn.model_selection <span class="keyword">import</span> train_test_split</span><br><span class="line"><span class="keyword">from</span> sklearn.metrics <span class="keyword">import</span> confusion_matrix,roc_curve,precision_recall_curve,auc</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> stepbystep.v0 <span class="keyword">import</span> StepByStep</span><br></pre></td></tr></table></figure>
+
+<h2 id="一个简单的分类问题"><a href="#一个简单的分类问题" class="headerlink" title="一个简单的分类问题"></a>一个简单的分类问题</h2><p>是时候处理另一类问题了：分类问题。在分类问题中，我们尝试预测一个数据点属于哪一类。</p>
+<p>假设我们有两类点数据：分别是红色和蓝色。它们是数据点的标签值，当然，我们需要给他们分配数字值。我们可以把红色设置为1并且把蓝色设置0。0代表负向的类别，1代表正向的类别。</p>
+<p>简单说，作为一个二元分类，可以总结如下：</p>
+<table>
+<thead>
+<tr>
+<th>颜色</th>
+<th>值</th>
+<th>类别</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>红色</td>
+<td>0</td>
+<td>负向</td>
+</tr>
+<tr>
+<td>蓝色</td>
+<td>1</td>
+<td>正向</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>注意：在一个分类模型中，输出的是对于正向类别的预测概率。在我们的例子中，模型讲预测一个点属于蓝色的概率。<br>到底选择什么事正向或者是负向，并不会yi模型的执行。如果我们反过来把红色当作是正向的，唯一区别是模型讲预测一个点属于红色的概率。但是，因为两个概率的和肯定是1，所以我们可以很容易的转换他们，无论怎样模型都是一样的。</p>
+</blockquote>
+<p>除了先定义模型再为模型生成合成数据的方式，我们讲采用另一种方式。</p>
+<h2 id="数据生成"><a href="#数据生成" class="headerlink" title="数据生成"></a>数据生成</h2><p>让我们用另一种更有趣的方式来生成数据，这次使用features(x1,x2)这种方式。我们将使用Scikit-Learn的make_moons()方法来生成100个演示用数据。我们还会增加一些高斯噪声并设置随机种子参数，这样可以保证代码的效果可以重现。</p>
+<p>下面的代码用于生成数据</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">x,y=make_moons(n_samples=<span class="number">100</span>,noise=<span class="number">0.3</span>,random_state=<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们使用Scikit-Learn的train_test_split()方法将数据分为训练集和验证集。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">x_train,x_val,y_train,y_val=train_test_split(</span><br><span class="line">  x,</span><br><span class="line">  y,</span><br><span class="line">  test_size=<span class="number">0.2</span>,</span><br><span class="line">  random_state=<span class="number">13</span></span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>记住，数据分割应该总是第一个做的事情，在数据分割之前不要做数据的预处理或者转换。</p>
+</blockquote>
+<p>接下来我们使用scikit_learn的StandardScaler来将数据标准化。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">sc=StandardScaler()</span><br><span class="line">sc.fit(x_train)</span><br><span class="line"></span><br><span class="line">x_train=sc.transform(x_train)</span><br><span class="line">x_val=sc.transform(x_val)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>记住，你应该只对训练数据集做标准化，然后使用transform()方法来对所有的数据集执行预处理步骤：训练、验证和测试。否则，你的模型在处理验证和测试数据时会出现信息泄漏。</p>
+</blockquote>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8b8d4156-25b7-4b91-8ded-560c64fe647a%2FUntitled.png?table=block&id=1f5561b9-3119-4517-bd77-d015ebcd4736&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1830&userId=&cache=v2"></p>
+<h2 id="数据准备"><a href="#数据准备" class="headerlink" title="数据准备"></a>数据准备</h2><p>很幸运，这一步你已经很熟悉了。通常，数据准备的步骤是将Numpy的数组转换为PyTorch的张量，为他们创建TensorDatasets，然后创建相应的数据加载器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader,TensorDataset</span><br><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line"><span class="comment">#将Numpy的数组转换为PyTorch的张量</span></span><br><span class="line">x_train_tensor=torch.as_tensor(x_train).<span class="built_in">float</span>()</span><br><span class="line">y_train_tensor=torch.as_tensor(y_train.reshape(-<span class="number">1</span>,<span class="number">1</span>)).<span class="built_in">float</span>()</span><br><span class="line"></span><br><span class="line">x_val_tensor=torch.as_tensor(x_val).<span class="built_in">float</span>()</span><br><span class="line">y_val_tensor=torch.as_tensor(y_val.reshape(-<span class="number">1</span>,<span class="number">1</span>)).<span class="built_in">float</span>()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建包含所有数据的数据集</span></span><br><span class="line">train_dataset=TensorDataset(x_train_tensor,y_train_tensor)</span><br><span class="line">val_dataset=TensorDataset(x_val_tensor,y_val_tensor)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 为每个数据集创建一个加载器</span></span><br><span class="line">train_loader=DataLoader(</span><br><span class="line">  dataset=train_dataset,</span><br><span class="line">  batch_size=<span class="number">16</span>,</span><br><span class="line">  shuffle=<span class="literal">True</span></span><br><span class="line">)</span><br><span class="line">val_loader=DataLoader(dataset=val_dataset,batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>在训练数据集中有80个数据，我们有两个特征数据x1和x2，labels(y)要么是0（红色）要么是1（蓝色）。我们有两个数据集；现在我们需要一个。。。。。。模型。</p>
+<h2 id="模型"><a href="#模型" class="headerlink" title="模型"></a>模型</h2><p>对于一个分类问题，其中一个最简单直白的模型就是<strong>逻辑回归</strong>。但是，我们不想简单的使用它，我们打算来创建这个逻辑回归模型。这样做的原因有两个：首先，这将让我们能更清楚为什么它在分类问题上被称为逻辑回归；其次，我们讲清楚了的理解上面是一个logit。</p>
+<p>好了，因为它被称为逻辑<strong>回归</strong>，我想说，<strong>线性回归</strong>是一个好的切入点。如果一个线性回归的模型有两个特征指标会是什么样子？</p>
+<p>$$<br>y&#x3D;bw_1x_1+w_2x_2+\epsilon<br>$$</p>
+<p>上面的模型有一个明显的问题：我们的函数值y是离散的：这意味着，它既可能是0，也可能是1。我们需要按照我们的需求对模型进行微小的调整。</p>
+<blockquote>
+<p>假如我们把正值输出视为1，把负值输出视为0呢？</p>
+</blockquote>
+<p>有道理，不是吗？我们不是已经把他们称为负面和正面类型了吗？为什么不直接这样用呢？我们的模型将看起来像下面这样：</p>
+<p>$$<br>y &#x3D; \begin{cases} 1, if &amp; b+w_1x_1+w_2x_2\geq\ 0<br> \ 0, if &amp; b+w_1x_1+w_2x_2&lt;0 \end{cases}<br>$$</p>
+<h3 id="logits"><a href="#logits" class="headerlink" title="logits"></a>logits</h3><p>让我们简化一下公式，把等号右边的部分用z代替，取名为logit(z)</p>
+<p>$$<br>z&#x3D; b+w_1x_1+w_2x_2<br>$$</p>
+<p>上面的公式和原始的线性回归模型非常类似，但是我们不再把它称为y函数或者lablel函数，而是称为z函数或者logit函数。</p>
+<blockquote>
+<p>这是不是意味着logit就是线性回归？</p>
+</blockquote>
+<p>不完全是，它们之间有一个基本的不同：在外面的最新的公式中没有了代表偏差值的$\epsilon$</p>
+<blockquote>
+<p>如果没有了偏差值，那么模型的<strong>不确定</strong>性从哪来？</p>
+</blockquote>
+<p>很高兴你会这样问。这是概率的工作：我们不再给数据一个分散的标签（0或者1），取而代之我们将计算一个数据属于正向类别的概率。</p>
+<h3 id="概率"><a href="#概率" class="headerlink" title="概率"></a>概率</h3><p>如果一个数据有logit并且其值等于1，显然它位于决策的边界线，因为它既不是正数也不是负数。为了完整性，我们把0归为正向类，但是这种归类有着很大的不确定性，不是吗？所以，0的概率应该被设置为50%，因为它既可以是正也可以是负。</p>
+<p>沿着这个逻辑，我们期望将更大的正向logit值来分配更高的概率，更大的负向logit值分配更低的概率。</p>
+<p>对于真正的大的正值和负值logit，我们的公式看起来像下面这样：</p>
+<p>$$<br>P(y&#x3D;1)\approx1.0,\ if \ z&gt;&gt;0 \<br>P(y&#x3D;1)&#x3D;0.5,\ if \ z&#x3D;0 \<br>P(y&#x3D;1)\approx 0.0,\ if \ z&lt;&lt;0 </p>
+<p>$$</p>
+<p>我们还需要建立一个公式，来将logit值映射到概率。我们马上就会做，但是首先，我们需要谈谈。。。。</p>
+<h3 id="比率"><a href="#比率" class="headerlink" title="比率"></a>比率</h3><blockquote>
+<p>什么是比率？</p>
+</blockquote>
+<p>这是一个口语表达，意思是发生了一些非常不可能的事情。但是比率不一定是不太可能发生的事情或者微小的的改变。在一个抛硬币的游戏中，正反面的出现的比率是 一比一，也就是各 50% 的比率。</p>
+<p>让我们假定是在打赌世界杯比赛的胜方。有两个国家 A 和 B。A 国的胜率更大，有 75% 的机会赢。所以 B 国的胜率就是 25%。如果你赌 A 国赢，那么你的胜率就很大，也就是说你获胜的几率是 3 比 1（75 比 25）。如果你决定试试自己的运气，赌 B 国赢，那么你的胜率就是 1 比 3（25 比 75），或者说 0.33 比 1。</p>
+<p>比率是成功率和失败率的比值：</p>
+<p>$$<br>odds \ ratio(p)&#x3D;\frac{p}{q}&#x3D;\frac{p}{1-p}<br>$$</p>
+<p>我们通过代码来表示</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">odds_ratio</span>(<span class="params">prob</span>):</span><br><span class="line">    <span class="keyword">return</span> prob/(<span class="number">1</span>-prob)</span><br><span class="line">p=<span class="number">0.75</span></span><br><span class="line">q=<span class="number">1</span>-p</span><br><span class="line">odds_ratio(p),odds_ratio(q)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">3.0</span>, <span class="number">0.3333333333333333</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果把从 1% 到 99% 的比率图形化后，结果如下图所示，红色的点对应了 25%(q)，50%和 75%(p)</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F1b5e6857-6557-40fe-8553-9f9f403935c0%2FUntitled.png?table=block&id=83303c2a-03d1-4bc1-b353-1d4847a6f3f5&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1310&userId=&cache=v2"></p>
+<p>很明显，左侧图显示的点并不对称，但是右侧显示的概率的对数是对称的。对数形式的概率对我们更有用，因为我们就是要找一个对称函数来将 logit 值映射为概率，</p>
+<blockquote>
+<p>为什么需要对称？</p>
+</blockquote>
+<p>如果函数不是对称的，对正类的不同选择将产生不等价的模型。但是，使用对称函数，我们可以使用相同的数据集训练两个等效模型，只需翻转类：</p>
+<ul>
+<li>蓝色模型（正向分类(y&#x3D;1)，对应蓝色的数据点）<ul>
+<li>数据点：P(y&#x3D;1)&#x3D;P(blue)&#x3D;0.83(等同于 P(red)&#x3D;0.17)</li>
+</ul>
+</li>
+<li>红色模型（负向分类(y&#x3D;1)，对应红色的数据点）<ul>
+<li>数据点：P(y&#x3D;1)&#x3D;P(red)&#x3D;0.17(等同于 P(blue)&#x3D;0.83)</li>
+</ul>
+</li>
+</ul>
+<h3 id="对数比率"><a href="#对数比率" class="headerlink" title="对数比率"></a>对数比率</h3><p>在比率上应用对数算法，不仅可以实现对称还可以将概率映射到实际的数字，而不是只有正值：</p>
+<p>$$<br>log \ odds \ ratio(p)&#x3D;log(\frac{p}{1-p})<br>$$</p>
+<p>用代码实现如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">log_odds_ratio</span>(<span class="params">prob</span>):</span><br><span class="line">    <span class="keyword">return</span> np.log(odds_ratio(prob))</span><br><span class="line"></span><br><span class="line">p=<span class="number">0.75</span></span><br><span class="line">q=<span class="number">1</span>-p</span><br><span class="line">log_odds_ratio(p),log_odds_ratio(q)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1.0986122886681098</span>, -<span class="number">1.0986122886681098</span>)</span><br></pre></td></tr></table></figure>
+
+<p>概率的和是 100%（比如 75%和25%），对应的概率转换为对数比率后其和也是 100%。如下图：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fe235a8c9-e1d0-4d64-ba4e-7810972e12cf%2FUntitled.png?table=block&id=0366bbc3-1b7c-43a9-bf8f-713214a1d2e1&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1310&userId=&cache=v2"></p>
+<p>在左图中的每一个概率值都对应右侧图中的一个对数比率值。其中红色的点是对应的 25%(q)，50%和 75%(p)、</p>
+<p>如果我们把图的横纵坐标反转，我们其实做的是一个函数的反转，将每个对数比率转换为概率。这正是我们要找的函数。现在看看，这个图形的样子是不是很熟悉？</p>
+<h3 id="从logits到概率"><a href="#从logits到概率" class="headerlink" title="从logits到概率"></a>从logits到概率</h3><p>在上一节中，我们试图将 logit 值映射到概率，并且我们刚刚以图形方式找到了一个将对数比值比映射到概率的函数。</p>
+<p>显然，我们的 logits 是对数比率。 当然，得出这样的结论不是很科学，但本练习的目的是说明如何映射由 logits (z) 表示的回归结果转化为概率。</p>
+<p>所以，下面是我们最终推导出的公式</p>
+<p>$$<br>b+w_1x_1+w_2x_2&#x3D;z&#x3D;log(\frac{p}{1-p})\<br>e^{b+w_1x_1+w_2x_2}&#x3D;e^z&#x3D;\frac{p}{1-p}<br>$$</p>
+<p>让我们稍微解一下这个方程，通过反转、重新排列和简化一些项来分离 p：</p>
+<p>$$<br>\frac{1}{e^z}&#x3D;\frac{p}{1-p} \<br>e^{-z}&#x3D;\frac{1}{p}-1 \<br>1+e^{-z}&#x3D;\frac{1}{p} \<br>p&#x3D;\frac{1}{1+e^{-z}}<br>$$</p>
+<p>看起来是不是很熟悉？是的，这是 sigmoid 函数。它是对数比率的反转</p>
+<p>$$<br>p&#x3D;\sigma(z)&#x3D;\frac{1}{1+e^{-z}}<br>$$</p>
+<p>用代码实现如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">sigmoid</span>(<span class="params">z</span>):</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>/(<span class="number">1</span>+np.exp(-z))</span><br><span class="line">p=<span class="number">0.75</span></span><br><span class="line">q=<span class="number">1</span>-p</span><br><span class="line">sigmoid(log_odds_ratio(p)),sigmoid(log_odds_ratio(q))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">0.75</span>, <span class="number">0.25</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="Sigmod"><a href="#Sigmod" class="headerlink" title="Sigmod"></a>Sigmod</h3><p>我们无需自己实现 sigmoid 函数，Pytorch 提供了两种使用这个函数的方法：torch.sigmoid()和 nn.Sigmoid</p>
+<p>第一种就是一个简单的函数调用，和刚才我们实现的方式一样，但是它接收一个张量作为参数并且返回一个张量。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.sigmoid(torch.tensor(<span class="number">1.0986</span>)),torch.sigmoid(torch.tensor(-<span class="number">1.0986</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor(<span class="number">0.7500</span>), tensor(<span class="number">0.2500</span>))</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fc62a156d-99ab-422a-aaec-cae736e69f6b%2FUntitled.png?table=block&id=bde33bf1-31c4-473e-a4a5-bd8624042f41&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=660&userId=&cache=v2"></p>
+<p>第二个是一个功能完备的类，它继承了nn.Module，它可以被继承了 nn.Module 的模型使用。它只实现了 forward()方法，这个方法就只调用了 torch.sigmoid()方法。</p>
+<blockquote>
+<p>为什么我们需要一个有 sigmoid 函数的模型？</p>
+</blockquote>
+<p>记住，模型可以被用于大型模型中的“层”，这正是我们要使用 sigmoid 类的地方。</p>
+<h3 id="逻辑回归"><a href="#逻辑回归" class="headerlink" title="逻辑回归"></a>逻辑回归</h3><p>我们给定两个特征值 x1 和 x2，模型将拟合线性回归，使其输出为 logits (z)，然后使用 sigmoid 函数将其转换为概率。</p>
+<p>$$<br>P(y&#x3D;1)&#x3D;\sigma(z)&#x3D;\sigma(b+w_1x_2+w_2x_2)<br>$$</p>
+<p>所谓一图胜千言，我们把上述公式图形化</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fc9559e0d-2544-4c9e-9e95-e776e69f41e2%2FUntitled.png?table=block&id=f7168a14-8958-416a-9909-49d381d6edf0&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=790&userId=&cache=v2"></p>
+<p>我们可以把逻辑回归当作是<strong>第二简单的神经网络</strong>。它与线性回归几乎相同，但对输出层 (z) 的结果应用了 sigmoid。</p>
+<h3 id="Sigmoid，非线性化和激活函数"><a href="#Sigmoid，非线性化和激活函数" class="headerlink" title="Sigmoid，非线性化和激活函数"></a>Sigmoid，非线性化和激活函数</h3><p>sigmoid 是非线性的。它可以用于将 logits 映射为概率，就像我们前面看到的那样。但是这不是它唯一的作用。</p>
+<p>非线性函数在神经网络中扮演了非常重要的角色。我们通过它们通常的名称来了解这些非线性：激活函数。</p>
+<p>sigmoid 是“受生物学启发”的函数，也是过去使用的第一个激活函数。您是否想过，如果神经网络的所有激活函数都被删除，无论有多少层，它会发生什么？</p>
+<p>这个问题会在后面的文章中讨论，但是我这里直接给出答案：如果是这样，这个神经网络将相当于是一个线性回归。</p>
+<h3 id="关于符号的注释"><a href="#关于符号的注释" class="headerlink" title="关于符号的注释"></a>关于符号的注释</h3><p>到目前为止，我们只处理了一两个特征值，所以我们可以把它们用公式表示出来。但是当我们处理图片数据时，这些特征值的数量将直线上升。所以我们要使用<strong>向量化</strong>的特征值。如果用向量化的范式表示权重(w)和特征(x)将是这样：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fbc87c9ea-84d6-4806-8612-aca62442a2c1%2FUntitled.png?table=block&id=9a64d8dc-883c-493d-b8e3-b1de5adb4006&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=530&userId=&cache=v2"></p>
+<p>在向量的下面会标明它的维度。之前的logits(z)函数可以表示为下面这样的公式</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F10e8db12-5af5-436c-93fb-27f3d6cc57bf%2FUntitled.png?table=block&id=9c7fc7e6-ef44-41f4-afb8-b3d64075b3d9&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1200&userId=&cache=v2"></p>
+<p>目前，我们并没有使用这样的一长串的公式，我们将使用最开始的简短公式。</p>
+<p>现在我们使用 PyTorch 中的 Sequential 模型来创建我们的逻辑回顾模型：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model1=nn.Sequential()</span><br><span class="line">model1.add_module(<span class="string">&#x27;linear&#x27;</span>,nn.Linear(<span class="number">2</span>,<span class="number">1</span>))</span><br><span class="line">model1.add_module(<span class="string">&#x27;sigmoid&#x27;</span>,nn.Sigmoid())</span><br><span class="line"><span class="built_in">print</span>(model1.state_dict())</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;linear.weight&#x27;</span>, tensor([[<span class="number">0.5406</span>, <span class="number">0.5869</span>]])), </span><br><span class="line">             (<span class="string">&#x27;linear.bias&#x27;</span>, tensor([-<span class="number">0.1657</span>]))])</span><br></pre></td></tr></table></figure>
+
+<p>注意到了吗？state_dict()只包含了 Linear 层。尽管模型还有一个 sigmoid 层，但是这一层并不包含任何参数，也就是说它<strong>不需要学习什么：</strong>无论 sigmoid 函数属于哪个模型，它都是相同的。</p>
+<h2 id="损失值"><a href="#损失值" class="headerlink" title="损失值"></a>损失值</h2><p>我们已经有了一个模型，现在是时候给它定义一个合适的损失函数。可以使用针对<strong>二元分类问题的二元交叉损失函数(Binary cross-entropy BCE)<strong>，有时候也叫</strong>对数损失函数</strong>。</p>
+<p>BCE 损失需要 sigmoid 函数返回的预测概率以及用于计算的真实标签 (y)。对于训练集中的每个数据点 i，它首先计算与该点的真实类别相对应的误差。</p>
+<p>如果数据点属于正类 (y&#x3D;1)，我们希望我们的模型预测接近 1 的概率，对吧？ 完美的 1 会产生 1 的对数，即 0。 这说得通; 完美的预测意味着零损失。公式如下：</p>
+<p>$$<br>y_i&#x3D;1\Rightarrow error_i&#x3D;log(P(y_i&#x3D;1))<br>$$</p>
+<p>如果数据点属于负类（y&#x3D;0）怎么办？ 那么我们不能简单地使用预测概率。 为什么不？ 因为模型输出一个点属于正类而不是负类的概率。 幸运的是，后者可以很容易计算：</p>
+<p>$$<br>P(y_i&#x3D;0)&#x3D;1-P(y_i&#x3D;1)<br>$$</p>
+<p>因此，如果一个数据是负类的，其差异的计算如下：</p>
+<p>$$<br>y_i&#x3D;0\Rightarrow error_i&#x3D;log(1-P(y_i&#x3D;1))<br>$$</p>
+<p>一旦所有的差异都被计算出来，他们就可以被累积到一个损失值中。对于二元交叉熵损失，我们只需取误差的平均值并取其负数值。</p>
+<p>$$<br>BCE(y)&#x3D;-\frac{1}{N_{pos}+N_{neg}}[\sum_{i&#x3D;1}^{N_{pos}}log(P(y_i&#x3D;1)+\sum_{i&#x3D;1}^{N_{neg}}log(1-P(y_i&#x3D;1))]<br>$$</p>
+<p>假设我们有两个虚拟数据点，每个数据点对应一个类别。 然后，假设我们的模型对它们进行了预测：0.9 和 0.2。 这些预测还不错，因为它预测实际正向的概率为 90%，而实际负向的概率只有 20%。 这在代码中看起来类似这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">dummy_labels=torch.tensor([<span class="number">1.0</span>,<span class="number">0.0</span>])</span><br><span class="line">dummy_predictions=torch.tensor([<span class="number">0.9</span>,<span class="number">0.2</span>])</span><br><span class="line"><span class="comment"># 正向的类（labels==1）</span></span><br><span class="line">postive_pred=dummy_predictions[dummy_labels==<span class="number">1</span>]</span><br><span class="line">first_summation=torch.log(postive_pred).<span class="built_in">sum</span>()</span><br><span class="line"><span class="comment"># 负向的类（labels==0）</span></span><br><span class="line">negtive_pred=dummy_predictions[dummy_labels==<span class="number">0</span>]</span><br><span class="line">second_summation=torch.log(<span class="number">1</span>-negtive_pred).<span class="built_in">sum</span>()</span><br><span class="line"><span class="comment"># n_total=n_pos_n_neg</span></span><br><span class="line">n_total=dummy_labels.size(<span class="number">0</span>)</span><br><span class="line">loss=-(first_summation+second_summation)/n_total</span><br><span class="line"></span><br><span class="line">loss</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">0.1643</span>)</span><br></pre></td></tr></table></figure>
+
+<p>第一段累计了正向数据的差异值，第二个累计了负向的差异值。上面的代码简单直白，很容易理解。但是很多时候我们看到的是下面这样的公式</p>
+<p>$$<br>BCE(y)&#x3D;-\frac{1}{N}\sum_{i&#x3D;1}^N[y_ilog(P(y_i&#x3D;1))+(1-y_i)log(1-P(y_i&#x3D;1))]<br>$$</p>
+<p>确实，上面的公式是一个计算损失值的好办法，但是它把负向和正向数量的相加省略了，这样看起来不直观。如果您暂停一分钟，您会发现正类 (y&#x3D;1) 中的点的第二项等于 0，而负类 (y&#x3D;0) 中的点的第一项等于 0。</p>
+<p>让我们看看代码中如何实现</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">summation=torch.<span class="built_in">sum</span>(</span><br><span class="line">    dummy_labels*torch.log(dummy_predictions)+</span><br><span class="line">    (<span class="number">1</span>-dummy_labels)*torch.log(<span class="number">1</span>-dummy_predictions)</span><br><span class="line">)</span><br><span class="line">loss=-summation/n_total</span><br><span class="line">loss</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">0.1643</span>)</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，效果是一样的。</p>
+<h3 id="BCELoss"><a href="#BCELoss" class="headerlink" title="BCELoss"></a>BCELoss</h3><p>当然，PyTorch 实现了二元交叉损失函数，nn.BCELoss()。和我们之前学过的 nn.MSELoss()一样，这是一个高阶函数，它返回的是实际的损失函数。</p>
+<p>nn.BCELoss()有两个可选的参数：</p>
+<ul>
+<li>reduction：它接收 mean,sum 或者 none三个可选值。缺省的 mean 实现了和我们上面介绍的一样的取平均值的损失函数。sum 将返回差异的合计值。最后一个 none 值，对应于未减少的形式；也就是说，它返回完整的错误数组。</li>
+<li>weight：缺省值为 none，意味着每个参数有着相同的权重。如果提供了值，这个值应该是一个与训练数据大小一样的张量对象，每个元素值代表一个对应的数据的权重值。换句话说，它可以给训练数据的每个值分配不同的权重。也就是按照索引顺序给每个数据点分配一个不同的权重值。</li>
+</ul>
+<p>下面的代码中我们将使用缺省的参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn=nn.BCELoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">loss_fn</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">BCELoss()</span><br></pre></td></tr></table></figure>
+
+<p>如你所见，nn.BCELoss()返回了另一个函数，它是真正的损失函数。它将接收预测值和标签值作为参数来计算损失。</p>
+<blockquote>
+<p>注意：这个函数的第一个参数必须是预测值，第二个参数是标签值。参数的顺序非常重要。</p>
+</blockquote>
+<p>我们通过代码来演示：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">dummy_labels=torch.tensor([<span class="number">1.0</span>,<span class="number">0.0</span>])</span><br><span class="line">dummy_predictions=torch.tensor([<span class="number">0.9</span>,<span class="number">0.2</span>])</span><br><span class="line"><span class="comment"># 正确的</span></span><br><span class="line">right_loss=loss_fn(dummy_predictions,dummy_labels)</span><br><span class="line"><span class="comment"># 错误的</span></span><br><span class="line">wrong_loss=loss_fn(dummy_labels,dummy_predictions)</span><br><span class="line"><span class="built_in">print</span>(right_loss,wrong_loss)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">0.1643</span>) tensor(<span class="number">15.0000</span>)</span><br></pre></td></tr></table></figure>
+
+<p>很明显结果是不同的，这是因为 nn.BCELoss()执行了概率的对数计算，它需要第一个参数是预测值，如果我们交换了参数的顺序，就会计算出不同的结果。</p>
+<p>到目前为止，还不错。但还有另一个可用的二元交叉熵损失，知道应该在什么时候使用其中一个非常重要，这样就不会出现模型和损失函数不一致的情况。此外，你会明白我为什么对logits如此大惊小怪。</p>
+<h3 id="BCEWithLogitsLoss"><a href="#BCEWithLogitsLoss" class="headerlink" title="BCEWithLogitsLoss"></a>BCEWithLogitsLoss</h3><p>之前的损失函数把概率作为它的一个参数（以及实际的标签值）。现在介绍的这个函数接收 logits 作为它的参数而不是概率。</p>
+<blockquote>
+<p>在实际应用中这意味着什么？</p>
+</blockquote>
+<p>这意味着， 在你使用损失函数时，你不应该在你的模型的最后一层加上 sigmoid。这个损失函数将sigmoid 层和它之前的二元交叉损失函数合二为一。</p>
+<blockquote>
+<p>注意，我再次强调：你必须使用正确的模型与损失函数的组合。<br>方式 1：将 nn.Sigmoid 作为最后一层，意味着你的模型将输出概率值，此时使用 nn.BCELoss()函数。<br>方式 2：在最后一层没有 sigmoid，意味着你的模型将输出 logits，此时使用 nn.BCEWithLogitsLoss()<br>如果混合使用 nn.Sigmoid 和 nn.BCEWithLogitsLoss()将会出错。<br>另外，方式 2 是推荐的做法，因为它比方式 1 更稳定。</p>
+</blockquote>
+<p>现在让我们详细看看 nn.BCEWithLogitsLoss()函数。它同样是一个高阶函数，它是它有三个可选的参数：</p>
+<ul>
+<li>reduction: 它的可选值是 mean,sum 或者 none，这个和 nn.BCELoss()一样，缺省值是 mean。</li>
+<li>weight:权重值，和 nn.BCELoss()的一样。</li>
+<li>pos_weight: 正样本的权重，它必须是一个长度等于与数据点关联的标签数量的张量。</li>
+</ul>
+<blockquote>
+<p>再说的详细一点：本文我们将处理一个<strong>单一标签二元分类</strong>（每个数据点只有一个标签），并且标签是二元的（只有两个可能值，0 或 1）。如果是 0，我们认为它是负向的，如果是 1，它就属于正向类。<br>不要将我们单个标签的正负类与c（文档中所谓的类号）混淆。该c对应于与数据点相关的不同标签的数量。在我们的例子中，c &#x3D; 1。<br>您可以使用这个参数来处理不平衡的数据集，但它比看起来的要多得多。我们将在下一个小节中回到它。</p>
+</blockquote>
+<p>我们来看看代码的实现：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn_logits=nn.BCEWithLogitsLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">loss_fn_logits</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">BCEWithLogitsLoss()</span><br></pre></td></tr></table></figure>
+
+<p>接下来我们使用 logits 和 标签值来计算损失。记得 logits 参数在第一位，然后是标签值。示例代码如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">logit1=log_odds_ratio(<span class="number">0.9</span>)</span><br><span class="line">logit2=log_odds_ratio(<span class="number">0.2</span>)</span><br><span class="line">dummy_labels=torch.tensor([<span class="number">1.0</span>,<span class="number">0.0</span>])</span><br><span class="line">dummy_logits=torch.tensor([logit1,logit2])</span><br><span class="line"><span class="built_in">print</span>(dummy_logits)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([ <span class="number">2.1972</span>, -<span class="number">1.3863</span>], dtype=torch.float64)</span><br></pre></td></tr></table></figure>
+
+<p>有了 logits 值，接下来就可以用损失函数来计算损失值了</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss=loss_fn_logits(dummy_logits,dummy_labels)</span><br><span class="line">loss</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">0.1643</span>)</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，输出结果一样。</p>
+<h3 id="不平衡数据集"><a href="#不平衡数据集" class="headerlink" title="不平衡数据集"></a>不平衡数据集</h3><p>在我们的例子中有两个数据点集合，分别对应正向和负向的数据。数据集是对称的。让我们创建另一个不对称的数据集，增加其他的属于负向类型的数据。为了简单起见，并且更好的演示 nn.BCEWithLogitsLoss()的一个特性，我将把新增的两个数据设置为相同的 logits。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dummy_imb_labels=torch.tensor([<span class="number">1.0</span>,<span class="number">0.0</span>,<span class="number">0.0</span>,<span class="number">0.0</span>])</span><br><span class="line">dummy_imb_logits=torch.tensor([logit1,logit2,logit2,logit2])</span><br></pre></td></tr></table></figure>
+
+<p>很显然，这是一个不平衡的数据集，因为它有三个负向的数据，但只有一个正向的数据。现在我们来看看 nn.BCEWithLogitsLoss()的 pos_weight 参数。为了弥补数据的不平衡，可以将权重设置为等于负向数据集合与正向数据的集合比例：<br>$$<br>pos_weight&#x3D;\frac{负向数据集合}{正向数据集合}<br>$$</p>
+<p>在我们的不平衡数据的例子中，结果为 3.0。通过这种方法，正向类数据中的每个数据都有了一个相对应的损失乘数 3。因为每个数据点都有一个单一的标签(c&#x3D;1)，pos_weight 这个参数的张量只有一个元素：tensor(3.0)。示例代码如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">n_neg=(dummy_imb_labels==<span class="number">0</span>).<span class="built_in">sum</span>().<span class="built_in">float</span>()</span><br><span class="line">n_pos=(dummy_imb_labels==<span class="number">1</span>).<span class="built_in">sum</span>().<span class="built_in">float</span>()</span><br><span class="line">pos_weight=(n_neg/n_pos).view(<span class="number">1</span>,)</span><br><span class="line">pos_weight</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">3.</span>])</span><br></pre></td></tr></table></figure>
+
+<p>现在我们来创建另一个损失函数，它将包括 pos_weight 参数</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">loss_fn_imb=nn.BCEWithLogitsLoss(</span><br><span class="line">    reduction=<span class="string">&#x27;mean&#x27;</span>,</span><br><span class="line">    pos_weight=pos_weight</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>接下来我们可以使用加了权重的损失函数来计算不平衡数据的损失值。我猜应该会得到和之前一样的损失值，毕竟我们加了权重，对吗？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss=loss_fn_imb(dummy_imb_logits,dummy_imb_labels)</span><br><span class="line">loss</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">0.2464</span>)</span><br></pre></td></tr></table></figure>
+
+<p>结果竟然不一致！当我们有两个对称的数据集的时候，损失值是 0.1643，但是现在虽然我们给正向数据增加了权重，但是结果却是 0.2464。</p>
+<blockquote>
+<p>有什么不同？</p>
+</blockquote>
+<p>好吧，事实证明，PyTorch 没有计算一个加权平均值。以下公式是我们期望得到的加权平均值公式</p>
+<p>$$<br>加权平均值&#x3D;\frac{pos_weight \ \sum_{i&#x3D;1}^{N_{pos}}loss_i +\sum_{i&#x3D;1}^{N_{neg}}loss_i}{pos_weightN_{pos}+N_{neg}}<br>$$</p>
+<p>但是 PyTorch 的算法是下面这样的</p>
+<p>$$<br>BCEWithLogitsLoss&#x3D;\frac{pos_weigh t \ \sum_{i&#x3D;1}^{N_{pos}}loss_i +\sum_{i&#x3D;1}^{N_{neg}}loss_i}{N_{pos}+N_{neg}}<br>$$</p>
+<p>看到分母的不同了吗？当然，原因就在于分母中正向数据的数量没有乘权重值，所以最终的结果就变大了。</p>
+<blockquote>
+<p>如果我就是想要一个加权平均值呢？</p>
+</blockquote>
+<p>其实也不难，还记得这个方法的 reduction 参数吗？如果我们将其设置为sum，我们的损失函数将只返回上述方程的分子。 然后我们就可以用加权数量作为分母了</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">loss_fn_imb_sum=nn.BCEWithLogitsLoss(</span><br><span class="line">    reduction=<span class="string">&#x27;sum&#x27;</span>,</span><br><span class="line">    pos_weight=pos_weight</span><br><span class="line">)</span><br><span class="line">loss=loss_fn_imb_sum(dummy_imb_logits,dummy_imb_labels)</span><br><span class="line">loss=loss/(pos_weight*n_pos+n_neg) </span><br><span class="line">loss</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.1643</span>])</span><br></pre></td></tr></table></figure>
+
+<h2 id="模型配置"><a href="#模型配置" class="headerlink" title="模型配置"></a>模型配置</h2><p>接下来我们可以进行模型的参数设置了。之前在介绍线性回归模型时，我们定义了一个模型，它有一个损失函数和一个优化器。现在我们定义一个输出 logits 的模型并使用 nn.BCEWithLogitsLoss()作为损失函数。因为我们有两个特征值，并且我们将会生成 logits 数据而不是概率，因此我们的模型将只有一层，使用 Linear(2,1)来定义模型。我们将继续使用 SGD 优化器并且设置的学习率为 0.1。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="comment"># 设置学习率</span></span><br><span class="line">lr=<span class="number">0.1</span></span><br><span class="line"></span><br><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model=nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;linear&#x27;</span>,nn.Linear(<span class="number">2</span>,<span class="number">1</span>))</span><br><span class="line"></span><br><span class="line"><span class="comment"># 定义 SGD 优化器来更新参数</span></span><br><span class="line">optimizer=optim.SGD(model.parameters(),lr=lr)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 定义 BCEWithLogitsLoss 作为损失函数</span></span><br><span class="line">loss_fn=nn.BCEWithLogitsLoss()</span><br></pre></td></tr></table></figure>
+
+<h2 id="模型训练"><a href="#模型训练" class="headerlink" title="模型训练"></a>模型训练</h2><p>是时候训练我们的模型了。我们可以复用之前的 StepByStep 类，代码如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> numpy <span class="keyword">as</span> np</span><br><span class="line"><span class="keyword">import</span> datetime</span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> matplotlib.pyplot <span class="keyword">as</span> plt</span><br><span class="line"><span class="keyword">from</span> torch.utils.tensorboard <span class="keyword">import</span> SummaryWriter</span><br><span class="line"></span><br><span class="line">plt.style.use(<span class="string">&#x27;fivethirtyeight&#x27;</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">StepByStep</span>(<span class="title class_ inherited__">object</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, model, loss_fn, optimizer</span>):</span><br><span class="line">        <span class="comment"># Here we define the attributes of our class</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># We start by storing the arguments as attributes</span></span><br><span class="line">        <span class="comment"># to use them later</span></span><br><span class="line">        self.model = model</span><br><span class="line">        self.loss_fn = loss_fn</span><br><span class="line">        self.optimizer = optimizer</span><br><span class="line">        self.device = <span class="string">&#x27;cuda&#x27;</span> <span class="keyword">if</span> torch.cuda.is_available() <span class="keyword">else</span> <span class="string">&#x27;cpu&#x27;</span></span><br><span class="line">        <span class="comment"># Let&#x27;s send the model to the specified device right away</span></span><br><span class="line">        self.model.to(self.device)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># These attributes are defined here, but since they are</span></span><br><span class="line">        <span class="comment"># not informed at the moment of creation, we keep them None</span></span><br><span class="line">        self.train_loader = <span class="literal">None</span></span><br><span class="line">        self.val_loader = <span class="literal">None</span></span><br><span class="line">        self.writer = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># These attributes are going to be computed internally</span></span><br><span class="line">        self.losses = []</span><br><span class="line">        self.val_losses = []</span><br><span class="line">        self.total_epochs = <span class="number">0</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># Creates the train_step function for our model,</span></span><br><span class="line">        <span class="comment"># loss function and optimizer</span></span><br><span class="line">        <span class="comment"># Note: there are NO ARGS there! It makes use of the class</span></span><br><span class="line">        <span class="comment"># attributes directly</span></span><br><span class="line">        self.train_step_fn = self._make_train_step_fn()</span><br><span class="line">        <span class="comment"># Creates the val_step function for our model and loss</span></span><br><span class="line">        self.val_step_fn = self._make_val_step_fn()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">to</span>(<span class="params">self, device</span>):</span><br><span class="line">        <span class="comment"># This method allows the user to specify a different device</span></span><br><span class="line">        <span class="comment"># It sets the corresponding attribute (to be used later in</span></span><br><span class="line">        <span class="comment"># the mini-batches) and sends the model to the device</span></span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            self.device = device</span><br><span class="line">            self.model.to(self.device)</span><br><span class="line">        <span class="keyword">except</span> RuntimeError:</span><br><span class="line">            self.device = <span class="string">&#x27;cuda&#x27;</span> <span class="keyword">if</span> torch.cuda.is_available() <span class="keyword">else</span> <span class="string">&#x27;cpu&#x27;</span></span><br><span class="line">            <span class="built_in">print</span>(<span class="string">f&quot;Couldn&#x27;t send it to <span class="subst">&#123;device&#125;</span>, sending it to <span class="subst">&#123;self.device&#125;</span> instead.&quot;</span>)</span><br><span class="line">            self.model.to(self.device)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">set_loaders</span>(<span class="params">self, train_loader, val_loader=<span class="literal">None</span></span>):</span><br><span class="line">        <span class="comment"># This method allows the user to define which train_loader (and val_loader, optionally) to use</span></span><br><span class="line">        <span class="comment"># Both loaders are then assigned to attributes of the class</span></span><br><span class="line">        <span class="comment"># So they can be referred to later</span></span><br><span class="line">        self.train_loader = train_loader</span><br><span class="line">        self.val_loader = val_loader</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">set_tensorboard</span>(<span class="params">self, name, folder=<span class="string">&#x27;runs&#x27;</span></span>):</span><br><span class="line">        <span class="comment"># This method allows the user to define a SummaryWriter to interface with TensorBoard</span></span><br><span class="line">        suffix = datetime.datetime.now().strftime(<span class="string">&#x27;%Y%m%d%H%M%S&#x27;</span>)</span><br><span class="line">        self.writer = SummaryWriter(<span class="string">f&#x27;<span class="subst">&#123;folder&#125;</span>/<span class="subst">&#123;name&#125;</span>_<span class="subst">&#123;suffix&#125;</span>&#x27;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_make_train_step_fn</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="comment"># This method does not need ARGS... it can refer to</span></span><br><span class="line">        <span class="comment"># the attributes: self.model, self.loss_fn and self.optimizer</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># Builds function that performs a step in the train loop</span></span><br><span class="line">        <span class="keyword">def</span> <span class="title function_">perform_train_step_fn</span>(<span class="params">x, y</span>):</span><br><span class="line">            <span class="comment"># Sets model to TRAIN mode</span></span><br><span class="line">            self.model.train()</span><br><span class="line"></span><br><span class="line">            <span class="comment"># Step 1 - Computes our model&#x27;s predicted output - forward pass</span></span><br><span class="line">            yhat = self.model(x)</span><br><span class="line">            <span class="comment"># Step 2 - Computes the loss</span></span><br><span class="line">            loss = self.loss_fn(yhat, y)</span><br><span class="line">            <span class="comment"># Step 3 - Computes gradients for both &quot;a&quot; and &quot;b&quot; parameters</span></span><br><span class="line">            loss.backward()</span><br><span class="line">            <span class="comment"># Step 4 - Updates parameters using gradients and the learning rate</span></span><br><span class="line">            self.optimizer.step()</span><br><span class="line">            self.optimizer.zero_grad()</span><br><span class="line"></span><br><span class="line">            <span class="comment"># Returns the loss</span></span><br><span class="line">            <span class="keyword">return</span> loss.item()</span><br><span class="line"></span><br><span class="line">        <span class="comment"># Returns the function that will be called inside the train loop</span></span><br><span class="line">        <span class="keyword">return</span> perform_train_step_fn</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_make_val_step_fn</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="comment"># Builds function that performs a step in the validation loop</span></span><br><span class="line">        <span class="keyword">def</span> <span class="title function_">perform_val_step_fn</span>(<span class="params">x, y</span>):</span><br><span class="line">            <span class="comment"># Sets model to EVAL mode</span></span><br><span class="line">            self.model.<span class="built_in">eval</span>()</span><br><span class="line"></span><br><span class="line">            <span class="comment"># Step 1 - Computes our model&#x27;s predicted output - forward pass</span></span><br><span class="line">            yhat = self.model(x)</span><br><span class="line">            <span class="comment"># Step 2 - Computes the loss</span></span><br><span class="line">            loss = self.loss_fn(yhat, y)</span><br><span class="line">            <span class="comment"># There is no need to compute Steps 3 and 4, since we don&#x27;t update parameters during evaluation</span></span><br><span class="line">            <span class="keyword">return</span> loss.item()</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> perform_val_step_fn</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_mini_batch</span>(<span class="params">self, validation=<span class="literal">False</span></span>):</span><br><span class="line">        <span class="comment"># The mini-batch can be used with both loaders</span></span><br><span class="line">        <span class="comment"># The argument `validation`defines which loader and</span></span><br><span class="line">        <span class="comment"># corresponding step function is going to be used</span></span><br><span class="line">        <span class="keyword">if</span> validation:</span><br><span class="line">            data_loader = self.val_loader</span><br><span class="line">            step_fn = self.val_step_fn</span><br><span class="line">        <span class="keyword">else</span>:</span><br><span class="line">            data_loader = self.train_loader</span><br><span class="line">            step_fn = self.train_step_fn</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> data_loader <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">        <span class="comment"># Once the data loader and step function, this is the same</span></span><br><span class="line">        <span class="comment"># mini-batch loop we had before</span></span><br><span class="line">        mini_batch_losses = []</span><br><span class="line">        <span class="keyword">for</span> x_batch, y_batch <span class="keyword">in</span> data_loader:</span><br><span class="line">            x_batch = x_batch.to(self.device)</span><br><span class="line">            y_batch = y_batch.to(self.device)</span><br><span class="line"></span><br><span class="line">            mini_batch_loss = step_fn(x_batch, y_batch)</span><br><span class="line">            mini_batch_losses.append(mini_batch_loss)</span><br><span class="line"></span><br><span class="line">        loss = np.mean(mini_batch_losses)</span><br><span class="line">        <span class="keyword">return</span> loss</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">set_seed</span>(<span class="params">self, seed=<span class="number">42</span></span>):</span><br><span class="line">        torch.backends.cudnn.deterministic = <span class="literal">True</span></span><br><span class="line">        torch.backends.cudnn.benchmark = <span class="literal">False</span></span><br><span class="line">        torch.manual_seed(seed)</span><br><span class="line">        np.random.seed(seed)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">train</span>(<span class="params">self, n_epochs, seed=<span class="number">42</span></span>):</span><br><span class="line">        <span class="comment"># To ensure reproducibility of the training process</span></span><br><span class="line">        self.set_seed(seed)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> epoch <span class="keyword">in</span> <span class="built_in">range</span>(n_epochs):</span><br><span class="line">            <span class="comment"># Keeps track of the numbers of epochs</span></span><br><span class="line">            <span class="comment"># by updating the corresponding attribute</span></span><br><span class="line">            self.total_epochs += <span class="number">1</span></span><br><span class="line"></span><br><span class="line">            <span class="comment"># inner loop</span></span><br><span class="line">            <span class="comment"># Performs training using mini-batches</span></span><br><span class="line">            loss = self._mini_batch(validation=<span class="literal">False</span>)</span><br><span class="line">            self.losses.append(loss)</span><br><span class="line"></span><br><span class="line">            <span class="comment"># VALIDATION</span></span><br><span class="line">            <span class="comment"># no gradients in validation!</span></span><br><span class="line">            <span class="keyword">with</span> torch.no_grad():</span><br><span class="line">                <span class="comment"># Performs evaluation using mini-batches</span></span><br><span class="line">                val_loss = self._mini_batch(validation=<span class="literal">True</span>)</span><br><span class="line">                self.val_losses.append(val_loss)</span><br><span class="line"></span><br><span class="line">            <span class="comment"># If a SummaryWriter has been set...</span></span><br><span class="line">            <span class="keyword">if</span> self.writer:</span><br><span class="line">                scalars = &#123;<span class="string">&#x27;training&#x27;</span>: loss&#125;</span><br><span class="line">                <span class="keyword">if</span> val_loss <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">                    scalars.update(&#123;<span class="string">&#x27;validation&#x27;</span>: val_loss&#125;)</span><br><span class="line">                <span class="comment"># Records both losses for each epoch under the main tag &quot;loss&quot;</span></span><br><span class="line">                self.writer.add_scalars(main_tag=<span class="string">&#x27;loss&#x27;</span>,</span><br><span class="line">                                        tag_scalar_dict=scalars,</span><br><span class="line">                                        global_step=epoch)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> self.writer:</span><br><span class="line">            <span class="comment"># Closes the writer</span></span><br><span class="line">            self.writer.close()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">save_checkpoint</span>(<span class="params">self, filename</span>):</span><br><span class="line">        <span class="comment"># Builds dictionary with all elements for resuming training</span></span><br><span class="line">        checkpoint = &#123;<span class="string">&#x27;epoch&#x27;</span>: self.total_epochs,</span><br><span class="line">                      <span class="string">&#x27;model_state_dict&#x27;</span>: self.model.state_dict(),</span><br><span class="line">                      <span class="string">&#x27;optimizer_state_dict&#x27;</span>: self.optimizer.state_dict(),</span><br><span class="line">                      <span class="string">&#x27;loss&#x27;</span>: self.losses,</span><br><span class="line">                      <span class="string">&#x27;val_loss&#x27;</span>: self.val_losses&#125;</span><br><span class="line"></span><br><span class="line">        torch.save(checkpoint, filename)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">load_checkpoint</span>(<span class="params">self, filename</span>):</span><br><span class="line">        <span class="comment"># Loads dictionary</span></span><br><span class="line">        checkpoint = torch.load(filename)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># Restore state for model and optimizer</span></span><br><span class="line">        self.model.load_state_dict(checkpoint[<span class="string">&#x27;model_state_dict&#x27;</span>])</span><br><span class="line">        self.optimizer.load_state_dict(checkpoint[<span class="string">&#x27;optimizer_state_dict&#x27;</span>])</span><br><span class="line"></span><br><span class="line">        self.total_epochs = checkpoint[<span class="string">&#x27;epoch&#x27;</span>]</span><br><span class="line">        self.losses = checkpoint[<span class="string">&#x27;loss&#x27;</span>]</span><br><span class="line">        self.val_losses = checkpoint[<span class="string">&#x27;val_loss&#x27;</span>]</span><br><span class="line"></span><br><span class="line">        self.model.train()  <span class="comment"># always use TRAIN for resuming training</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">predict</span>(<span class="params">self, x</span>):</span><br><span class="line">        <span class="comment"># Set is to evaluation mode for predictions</span></span><br><span class="line">        self.model.<span class="built_in">eval</span>()</span><br><span class="line">        <span class="comment"># Takes aNumpy input and make it a float tensor</span></span><br><span class="line">        x_tensor = torch.as_tensor(x).<span class="built_in">float</span>()</span><br><span class="line">        <span class="comment"># Send input to device and uses model for prediction</span></span><br><span class="line">        y_hat_tensor = self.model(x_tensor.to(self.device))</span><br><span class="line">        <span class="comment"># Set it back to train mode</span></span><br><span class="line">        self.model.train()</span><br><span class="line">        <span class="comment"># Detaches it, brings it to CPU and back to Numpy</span></span><br><span class="line">        <span class="keyword">return</span> y_hat_tensor.detach().cpu().numpy()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">plot_losses</span>(<span class="params">self</span>):</span><br><span class="line">        fig = plt.figure(figsize=(<span class="number">10</span>, <span class="number">4</span>))</span><br><span class="line">        plt.plot(self.losses, label=<span class="string">&#x27;Training Loss&#x27;</span>, c=<span class="string">&#x27;b&#x27;</span>)</span><br><span class="line">        plt.plot(self.val_losses, label=<span class="string">&#x27;Validation Loss&#x27;</span>, c=<span class="string">&#x27;r&#x27;</span>)</span><br><span class="line">        plt.yscale(<span class="string">&#x27;log&#x27;</span>)</span><br><span class="line">        plt.xlabel(<span class="string">&#x27;Epochs&#x27;</span>)</span><br><span class="line">        plt.ylabel(<span class="string">&#x27;Loss&#x27;</span>)</span><br><span class="line">        plt.legend()</span><br><span class="line">        plt.tight_layout()</span><br><span class="line">        <span class="keyword">return</span> fig</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">add_graph</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="comment"># Fetches a single mini-batch so we can use add_graph</span></span><br><span class="line">        <span class="keyword">if</span> self.train_loader <span class="keyword">and</span> self.writer:</span><br><span class="line">            x_sample, y_sample = <span class="built_in">next</span>(<span class="built_in">iter</span>(self.train_loader))</span><br><span class="line">            self.writer.add_graph(self.model, x_sample.to(self.device))</span><br></pre></td></tr></table></figure>
+
+<p>然后，使用这个类来设置模型、损失函数和优化器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">n_epochs=<span class="number">100</span></span><br><span class="line">sbs=StepByStep(model,loss_fn,optimizer)</span><br><span class="line">sbs.set_loaders(train_loader,val_loader)</span><br><span class="line">sbs.train(n_epochs)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig=sbs.plot_losses()</span><br></pre></td></tr></table></figure>
+
+<p>损失值的输出图像如下</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fb439d251-a70f-451b-8de4-98e15b3696c6%2FUntitled.png?table=block&id=030a25ac-01e3-4832-83bd-9174a3125f63&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>你是对的；验证损失低于训练损失。难道不应该相反吗？！好吧，一般来说，是的，应该这样。因为在我们的例子中，验证数据集更容易被分类：如果你观察之前生成的数据的图像，你会发现右图中的验证数据的红点和蓝点分的比较开，不像训练数据集中重合度那么高，因此它更容易快速的下降到最优梯度，或者说更容易计算出最小的损失值。</p>
+<p>明白了这个问题后，我们来看看模型训练的参数状态</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(model.state_dict())</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;linear.weight&#x27;</span>, tensor([[ <span class="number">1.1806</span>, -<span class="number">1.8693</span>]])), </span><br><span class="line">(<span class="string">&#x27;linear.bias&#x27;</span>, tensor([-<span class="number">0.0591</span>]))])</span><br></pre></td></tr></table></figure>
+
+<p>我们的模型输出的是 logits 值，对吗？所以我们来把上述输出的权重插入到 logits 公式中，其结果如下：</p>
+<p>$$<br>\begin{aligned} &amp;z&#x3D;b+w_1x_1+w_2x_2 \<br>&amp;z&#x3D;-0.0591+1.1806x_1-1.8693x_2<br>\end{aligned}<br>$$</p>
+<p>上面 z 的值就是我们的模型的输出。这是一个线性回归。但是这是一个分类问题，怎么回事？先等一下，我们在后面关于“决策边界”部分再进行讨论。</p>
+<p>接下来我将用我们的模型来进行预测，我们使用训练数据集的前四个数据：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">predictions=sbs.predict(x_train_tensor[:<span class="number">4</span>])</span><br><span class="line">predictions</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">array([[ <span class="number">0.20345592</span>],</span><br><span class="line">       [ <span class="number">2.9444451</span> ],</span><br><span class="line">       [ <span class="number">3.6933177</span> ],</span><br><span class="line">       [-<span class="number">1.2334073</span> ]], dtype=float32)</span><br></pre></td></tr></table></figure>
+
+<p>很显然这不是概率数据，而是 logits 值。我们当然也可以获得概率值。此时就要使用 sigmoid 函数了：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">probabilities=sigmoid(predictions)</span><br><span class="line">probabilities</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">array([[<span class="number">0.5506892</span> ],</span><br><span class="line">       [<span class="number">0.9500003</span> ],</span><br><span class="line">       [<span class="number">0.9757152</span> ],</span><br><span class="line">       [<span class="number">0.22558564</span>]], dtype=float32)</span><br></pre></td></tr></table></figure>
+
+<p>上面的代码含义为：我们给出四个点的数据，它们属于正向类的概率是多少。最后，我们要从概率转换为分类问题。如果一个概率大于或者等于某个阈值，那么它就是一个正向的分类。如果概率小于阈值，它就是一个负向的分类。我们将阈值定义为 0.5</p>
+<p>$$<br>y &#x3D; \begin{cases} 1, if \   P(y&#x3D;1)\geq\ 0.5<br> \ 0, if \ P(y&#x3D;1)&lt;0.5 \end{cases}<br>$$</p>
+<p>但是，概率实际上是 logits 的 sigmoid 函数的结果</p>
+<p>$$<br>y &#x3D; \begin{cases} 1, if \   \sigma \geq\ 0.5<br> \ 0, if \ \sigma&lt;0.5 \end{cases}<br>$$</p>
+<p>但是，只有当logit（z）的值为零时，sigmoid函数的值才为0.5：</p>
+<p>$$<br>y &#x3D; \begin{cases} 1, if \   z \geq\ 0<br> \ 0, if \ z&lt;0 \end{cases}<br>$$</p>
+<p>因为，我们根本不必关心概率，我们直接使用 predictins(logits)来获得数据的分类</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">classes=(predictions&gt;=<span class="number">0</span>).astype(<span class="built_in">int</span>)</span><br><span class="line">classes</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">array([[<span class="number">1</span>],</span><br><span class="line">       [<span class="number">1</span>],</span><br><span class="line">       [<span class="number">1</span>],</span><br><span class="line">       [<span class="number">0</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>显然，logits(z)的值为 0 是正向和负向的边界。</p>
+<blockquote>
+<p>为什么阈值是 0.5，我可以选择别的阈值吗？</p>
+</blockquote>
+<p>当然可以。不同的阈值会给出不同的混淆指标，也因此针对不同的指标会有不同的精度、准确度等。我们会在“决策边界”一节继续讲。</p>
+<h2 id="决策边界"><a href="#决策边界" class="headerlink" title="决策边界"></a>决策边界</h2><p>我们现在知道，z 为 0 时是分类的决策边界。但是 z 是包含 x1和 x2 两个特征值的线性模型。如果我们做一些公式的转换，我们将得到以下结果</p>
+<p>$$<br>\begin{aligned}z&#x3D;0 &amp;&#x3D;b+w_1x_1+w_2x_2 \<br>-w_2x_2 &amp;&#x3D;b+w_1x_1 \<br>x_2&amp;&#x3D;-\frac{b}{w_2}-\frac{w_1}{w_2}x_1 \end{aligned}<br>$$</p>
+<p>也就是说给出 b,w1,w2参数和第一个特征值 x1 ，我们就可以计算出对应的第二个特征值 x2，而 x2正好位于决策边界。从上面的公式我们可以看出，决策边界是一条直线。</p>
+<p>现在让我们把模型的权重值和参数代入到公式中：</p>
+<p>$$<br>\begin{aligned} x_2 &amp;&#x3D;-\frac{0.0591}{1.8693}+\frac{1.1806}{1.8693}x_1 \<br>x_2&amp;&#x3D;-0.0316+0.6315x_1 \end{aligned}<br>$$</p>
+<p>一图胜千言，我们用图像展示出来</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F3e448a81-8718-491c-b1c1-b2357bae3424%2FUntitled.png?table=block&id=d8366ad3-f402-457e-8925-c0b8c2e2e0b8&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1080&userId=&cache=v2"></p>
+<p>上图说明了所有问题。它只包括了训练数据集中的数据。所以，这些是我们训练时看到的数据。模型将尽可能的将数据点分为两类：红色代表负向类，蓝色代表正向类。</p>
+<p>最左侧的是数据的 logits(z)的数据点概览图。</p>
+<p>在中间的图像中，我们将利用sigmoid 函数把 logits 值转为概率的 3D 图像。您甚至可以在3D中看到sigmoid函数的形状，向左接近零，向右接近1。</p>
+<p>最右侧的图，是数据点概率值的概览图，它和左侧的图相同。红点或蓝点的颜色深度越高或者越低，意味着它们的概率越高或越低，并且这里的决策边检是一条从中间穿过的灰色的直线，对应了概率是 50%。</p>
+<blockquote>
+<p>注意，逻辑回归总是用一条直线将数据分为两类。</p>
+</blockquote>
+<p>我们的模型产生了一条直线，很好的分隔了红点和蓝点，对吗？好吧，可能没那么难，因为蓝点更集中在右下角，而红点大多在左上角。换句话说，这些类别的可分离性很高的。</p>
+<blockquote>
+<p>类的可分离性越高，损失就越低。</p>
+</blockquote>
+<p>现在我们就可以明白，为什么验证数据集的损失值比训练数据集的更低了。因为在验证数据集中，数据的可分离性相比训练数据集更高。使用训练集获得的决策边界可以更好地区分红点和蓝点。让我们检查一下，图像上的显示情况：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F50b52366-b56b-46e1-99be-132a35e8f2cb%2FUntitled.png?table=block&id=721276b1-5608-4a41-81e5-30dd9ea9988d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>看到了吗？除了三个点：两个红点一个蓝点，其他数据被正确的分类。换句话说，有更好的分离性。</p>
+<h3 id="我的数据点的分离性如何？"><a href="#我的数据点的分离性如何？" class="headerlink" title="我的数据点的分离性如何？"></a>我的数据点的分离性如何？</h3><p>这是一个价值百万美元的问题。在上面的例子中，我们可以清晰的看到验证数据集的可分离性比训练数据集更高。</p>
+<p>如果数据的可分离性不高该怎么办？让我们快速的看一个例子，另一个有10个数据点的小数据集：7个红色，3个蓝色。</p>
+<p>颜色是标签（y），每个数据点都有一个单一的特征（x1）。我们可以沿着一条线绘制它们；我们只有一个维度。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fef88f027-083b-4190-8613-b89d3fa0a997%2FUntitled.png?table=block&id=1d7456ba-c462-4b75-9dcf-af61e426c494&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>我们能用一条直线将红点和蓝点分开吗？显然不能，在一维环境下，这些点是不可分离的。那么我们该放弃吗？</p>
+<blockquote>
+<p>永远不要放弃！</p>
+</blockquote>
+<p>如果在一维空间中没法分类，就试试二维空间。只有一个问题，如何创建另一个维度？我们可以用一些技巧：我们可以在原始的维度上使用一个函数，然后将结果作为第二个维度。非常简单，对吗？</p>
+<p>对于小的数据集，我们可以使用一个平方函数。</p>
+<p>$$<br>X_2&#x3D;f(X_1)&#x3D;X_1^2<br>$$</p>
+<p>结果回事什么呢？</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fe7a5310e-ccc4-47d7-8f5f-77c1942d0a08%2FUntitled.png?table=block&id=f99fd17e-a5e1-4164-b1aa-5c1cbec73e47&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>现在我们在看，可以把红点和蓝点分离了吗？在二维空间中这非常简单，对吧。</p>
+<blockquote>
+<p>增加维度，可以增加可分离性！</p>
+</blockquote>
+<p>详细解释为什么维度增加可以提升分离性，已经超出了本文的范围。重要的是理解这个通用的理念：增加维护，可以增加更多的实体空间。如果数据点相距更远，那么将它们分离可能更容易。在二维空间中，决策边界是一条线。在三维空间中，决策边界是一个平面。如果是四维或者多维空间，决策边界将是一个“超平面”（这是一个专业术语，实际上是画不出这样的平面的）。</p>
+<p>你听说过支持矢量机器的内核技巧吗(SVMs)? 差不多就是它的作用！内核只不过是我们用来创建额外维度的函数。我们使用的平方函数是一个多项式，所以我们使用了一个多项式内核。</p>
+<blockquote>
+<p>我们为什么要在深度学习的文章中提到 SVMs？</p>
+</blockquote>
+<p>这是个好问题。事实证明，神经网络也可能增加维度。如果您添加一个单位多于功能数量的隐藏层，就会出现这种情况。例如：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">model=nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;hidden&#x27;</span>,nn.Linear(<span class="number">2</span>,<span class="number">10</span>))</span><br><span class="line">model.add_module(<span class="string">&#x27;activation&#x27;</span>,nn.ReLU())</span><br><span class="line">model.add_module(<span class="string">&#x27;output&#x27;</span>,nn.Linear(<span class="number">10</span>,<span class="number">1</span>))</span><br><span class="line">model.add_module(<span class="string">&#x27;sigmoid&#x27;</span>,nn.Sigmoid())</span><br></pre></td></tr></table></figure>
+
+<p>上面的模型将维度从 2 维扩充到了 10 维，然后用 10 维空间来计算 logits。但是层与层之间必须有一个激活函数菜可以工作。</p>
+<p>我想你现在可能有两个问题：“这是为什么？”和“激活函数实际上是什么？”。这些是下一篇文章的主题。</p>
+<h2 id="分类阈值"><a href="#分类阈值" class="headerlink" title="分类阈值"></a>分类阈值</h2><blockquote>
+<p>这一节是可选内容。在这里，我会深入讨论使用不同阈值进行分类，以及这会对混淆矩阵有哪些影响。我将讨论非常基本的分类指标：为真或假的概率、精确度和回归值以及准确性。最后，我将向你展示这些指标如何合并到一起来创建一个 ROC 和精度回归曲线。<br>如果你已经熟悉这些概念，可以跳过这部分。</p>
+</blockquote>
+<p>目前为止，我们用 50% 作为分类的阈值，然后用模型输出的概率来进行分类。让我们深入了解一下，如果使用不同的阈值会带来哪些影响。我们将在校验数据集上来操作，因为其中只有 20 个数据点，所以我们可以很方便的观察它们。</p>
+<p>首先，让我们计算 logits 和 概率。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">logits_val=sbs.predict(x_val)</span><br><span class="line">probabilities_val=sigmoid(logits_val).squeeze()</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>在机器学习和深度学习中，通常算法的结果是可以表示向量的数组（即包含两对或以上的方括号形式[[]]），如果直接利用这个数组进行画图可能显示界面为空（见后面的示例）。我们可以利用squeeze（）函数将表示向量的数组转换为秩为1的数组，这样利用matplotlib库函数画图时，就可以正常的显示结果了。</p>
+</blockquote>
+<p>接下来我们把概率显示到一条线上。这意味着我们把概览图转换为一个直线图。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F940b8f66-aab3-41c1-9e82-e559a8d43e88%2FUntitled.png?table=block&id=0adeed01-de01-4646-89ba-e74189ce9702&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1570&userId=&cache=v2"></p>
+<p>左边的图是一个概览图，它用一条直线将红点和蓝点分开。右图我们根据概率值把这些数据放到一条直线上。此时，决策边界在数轴上是一个垂直的虚线，它代表了 50% 的阈值。阈值线左边是红色的分类，数据点有红色的边框，右边是蓝色的分类，数据点是蓝色的边框。</p>
+<p>数据的真实类别被实际的颜色填充，所以你会看到阈值线的左边有一个红色边框的蓝点，右边有两个蓝色边框的红点。现在我们对图像做一些细微的调整：我们把蓝色点放在表示概率的直线的下面，把红色的点放在线的上面。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F85768df8-066f-4ae1-b7d6-4e9d47b867ae%2FUntitled.png?table=block&id=5444f521-ff94-4f8c-982c-0f76317ec17f&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1470&userId=&cache=v2"></p>
+<p>现在，所有的点都被放在了正确的四个象限中。</p>
+<h3 id="混淆矩阵"><a href="#混淆矩阵" class="headerlink" title="混淆矩阵"></a>混淆矩阵</h3><p>这个四象限分为：真的负向(TN)、假定正向(FP)，位于线的上方；以及假的负向(FN)和真的正向(TP)，位于线的下方。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Faba155c5-4769-48f4-bf28-9e472ae82174%2FUntitled.png?table=block&id=bb8489bd-9c65-449b-a13c-df6c72bead8c&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1510&userId=&cache=v2"></p>
+<p>位于线上方的数据点是实际的负向值，位于线下方的点是实际的负向值。位于阈值线右侧的数据点被分类为正向，位于阈值线左侧的数据点被分类为负向。</p>
+<p>很酷，是吧。让我们用 Scikit-Learn 的 confusion_matrix()方法来验证一下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cm_thresh50=confusion_matrix(y_val,(probabilities_val&gt;=<span class="number">0.5</span>))</span><br><span class="line">cm_thresh50</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">array([[ <span class="number">7</span>,  <span class="number">2</span>],</span><br><span class="line">       [ <span class="number">1</span>, <span class="number">10</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>我们验证集中的所有20点都已计入。有三个被错误分类的数据：一个假的负向值和两个假的正向值，就如我们在图中看到的一样。我选择将蓝点（正）移到线下方，以匹配Scikit-Learn的混淆矩阵的处理方法。</p>
+<blockquote>
+<p>混乱矩阵本身已经足够混乱了，但更糟糕的是，你会发现周围有各种各样的布局。有些人首先列出正向值，最后列出负向值。有些人甚至翻转实际值和预测值，有效地转换了混淆矩阵。因此在绘制混淆矩阵之前一定要检查它的布局是否正确。</p>
+</blockquote>
+<p>有件事一定要记得：混淆矩阵取决于阈值。如果你沿着概率线移动阈值，你最终会改变每个象限的点数。</p>
+<blockquote>
+<p>有多少阈值就有对应的多少个混淆矩阵。</p>
+</blockquote>
+<p>进一步说，不同的混淆指标意味着有不同的混淆矩阵。我们要区分混淆指标和混淆矩阵的概念。以下代码根据指标的名称将混淆矩阵内的指标分离出来：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">split_cm</span>(<span class="params">cm</span>):</span><br><span class="line">    <span class="comment"># 实际的负向值</span></span><br><span class="line">    actual_negative=cm[<span class="number">0</span>]</span><br><span class="line">    <span class="comment"># 预测的负向值，位于第一象限</span></span><br><span class="line">    tn=actual_negative[<span class="number">0</span>]</span><br><span class="line">    <span class="comment"># 预测的正向值</span></span><br><span class="line">    fp=actual_negative[<span class="number">1</span>]</span><br><span class="line">    <span class="comment"># 实际的正向值</span></span><br><span class="line">    actual_postive=cm[<span class="number">1</span>]</span><br><span class="line">    <span class="comment"># 预测的正向值</span></span><br><span class="line">    fn=actual_postive[<span class="number">0</span>]</span><br><span class="line">    <span class="comment"># 预测的负向值</span></span><br><span class="line">    tp=actual_postive[<span class="number">1</span>]</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">return</span>  tn,fp,fn,tp</span><br><span class="line">split_cm(cm_thresh50)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">7</span>, <span class="number">2</span>, <span class="number">1</span>, <span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>我们可以看到：</p>
+<ul>
+<li>红色点有 7 个，在左侧，是所有的预测的负向值</li>
+<li>红点蓝边的有 2 个，在第二象限，是预测的假的正向值</li>
+<li>蓝点红边的有 1 个，在第四象限，是预测的假的负向值</li>
+<li>蓝点一共有 10 个，在线的下方，是所有的预测的正向值</li>
+</ul>
+<h3 id="指标"><a href="#指标" class="headerlink" title="指标"></a>指标</h3><p>根据 TN,FP,FN,TP 这四个指标，你可以构建一堆其他的指标。下面的公式计算了真正向的概率和假正向的概率，精度和回归以及准确率。</p>
+<p>为正向的真和假的概率，计算公式如下</p>
+<p>$$<br>TPR&#x3D;\frac{TP}{TP+FN} \ FPR&#x3D;\frac{FP}{FP+TN}<br>$$</p>
+<p>真的正向值的概率告诉我们，在所有的正向值数据中，你的模型预测对了多少。在我们的例子中，我们知道有 11 个正向的值，我们的模型预测对了 10 个，所以 TPR 就是 10&#x2F;11 也就是差不多 91% 的比率。这就是另一个指标的名称：回归。说得通，对吧？</p>
+<blockquote>
+<p>注意，如果假的负向值对你的程序不利，你就需要专注于提高模型的 TPR 指标。</p>
+</blockquote>
+<blockquote>
+<p>什么时候假的负向值真的不好呢？以机场安检为例，正面意味着存在威胁。假的正向值很常见：你没有什么可隐瞒的，但由于机器的极端敏感性，你的包最终会受到更彻底的检查。假的正向值意味着机器未能检测到实际威胁。我不必解释为什么这很糟糕。</p>
+</blockquote>
+<p>假的正向值的比率告诉你，从你知道是阴性的所有点来看，你的模型预测错了多少。在我们的例子中，我们预测错了两个。FPR 是 2 &#x2F;9 或者说 22% 的比率。</p>
+<blockquote>
+<p>注意，如果假的正向值对你的程序不利，你就需要专注于提高模型的 FPR 指标。</p>
+</blockquote>
+<blockquote>
+<p>什么时候假的正向值很糟糕呢？以投资决策为例，例如，积极意味着有利可图的投资。假的负向值意味着错失了投资机会：它们看起来是不好的投资，但其实不是。你没有得到投资回报，但是你也没有啥损失。一个假的正向值意味着，你选择投资，但是这是不好的机会，你会损失钱。</p>
+</blockquote>
+<p>我们可以用下面的公式来计算着两个指标：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">tpr_fpr</span>(<span class="params">cm</span>):</span><br><span class="line">    tn,fp,fn,tp=split_cm(cm)</span><br><span class="line">    tpr=tp/(tp+fn)</span><br><span class="line">    fpr=fp/(fp+tn)</span><br><span class="line">    <span class="keyword">return</span> tpr,fpr</span><br><span class="line">tpr_fpr(cm_thresh50)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">0.9090909090909091</span>, <span class="number">0.2222222222222222</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="TPR与FPR之间的权衡"><a href="#TPR与FPR之间的权衡" class="headerlink" title="TPR与FPR之间的权衡"></a>TPR与FPR之间的权衡</h3><p>通常，我们要在 TPR 和 FPR 这两个指标之间权衡。</p>
+<p>假设我们认为假的负向对我们的应用是不好的，并且我们希望提高 TPR。有一个快速的解决办法：我们让模型只预测正向的分类，使用 0 作为阈值。这样我们得到的就是没有假负向值的数据，因为没有负向的值了。我们的 TPR 就是 100%，很棒，是吧？</p>
+<p>错误！如果所有的数据都预测为正向，那么每个负向的实例都将会是一个假的正向值，并且没有真的负向值，导致我们的 FPR 也将会是 100%</p>
+<p>世界上没有免费的午餐，模型也不例外。</p>
+<p>假设我们认为假的正向值是个问题呢？我们希望能减少 FPR。另一个“聪明”的办法是：让我们只预测负向类，将阈值设置为 1。这样我们无论如何都得不到假的正向值，我们的 FPR 将是 0%。任务完成，对吧？</p>
+<p>你猜怎么着？再次错误！如果所有的点都被预测为负向，每个正向的实例将会变成假的负向，也就是说没有真的正向值。我们的 TPR 也会是 0%。</p>
+<p>所以，结论是鱼和熊掌不能兼得。</p>
+<h3 id="精度与回归"><a href="#精度与回归" class="headerlink" title="精度与回归"></a>精度与回归</h3><p>我们接着看下一对指标：</p>
+<p>$$<br>Recall&#x3D;\frac{TP}{TP+FN} \<br>Precision&#x3D;\frac{TP}{TP+FP}<br>$$</p>
+<p>我们略过 Recall，因为之前说过了，它等同于 TPR：对于所有的正向数据，模型回归了多少。</p>
+<p>那么精度 Precision 呢？我们只有预测的正向值计算。我们将真的和假的正向值加起来，然后用真的正向值来除以它。它的含义在某种程度上与回归 Recall的含义相辅相成：对于所有模型预测分类为正向的数据，有多少是预测对的。在我们的例子中，模型将 12 个数据预测为正向值，其中 10 个是对的，所以精度就是 10&#x2F;12，大概 83%。</p>
+<p>我们可以用下面的代码来计算这两个指标：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">precision_recall</span>(<span class="params">cm</span>):</span><br><span class="line">    tn,fp,fn,tp=split_cm(cm)</span><br><span class="line">    precision=tp/(tp+fp)</span><br><span class="line">    recall=tp/(tp+fn)</span><br><span class="line">    <span class="keyword">return</span> precision,recall</span><br><span class="line">precision_recall(cm_thresh50)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">0.8333333333333334</span>, <span class="number">0.9090909090909091</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="precision和recall-之间的权衡"><a href="#precision和recall-之间的权衡" class="headerlink" title="precision和recall 之间的权衡"></a>precision和recall 之间的权衡</h3><p>再一次，鱼和熊掌不可兼得，权衡是件困难的事。</p>
+<p>假设假的负向数据对我们不利，我们希望提高回归值 recall。如果我们只让模型预测正向分类，并使用 0 作为阈值。我们就得不到假的负向值。我们的回顾值将是 100%，也许你现在准备好听坏消息了，是吧？</p>
+<p>如果所有的数据都被预测为正向值，每个负向的数据都将是假的正向值。精度恰好是数据集中正样本的比例。</p>
+<p>换成假的正向值问题呢？我们想要增加精度。此时通过设置阈值为 0，让模型只预测负向分类。我们将得不到假的正向值。我们的精度就是 100%</p>
+<p>当然，如果所有的预测都是负向的，就没有正向值了，我们的回归值 recall 将是 0%。</p>
+<p>最后还有一个指标。</p>
+<h3 id="准确度"><a href="#准确度" class="headerlink" title="准确度"></a>准确度</h3><p>准确度指的是，基于所有的数据，你的模型有多少次是预测准确的。公式如下：</p>
+<p>$$<br>Accuracy&#x3D;\frac{TP+TN}{TP+TN+FP+FN}<br>$$</p>
+<p>在我们的例子中，模型在 20 个数据中预测对了 17 个数据，所以它的准确度是 85%。还不错，是吧。准确性越高越好，但它并不能说明一切。如果您的数据集是不平衡，依赖准确性可能会产生误导。</p>
+<p>假设我们有 1000 个数据：990 个是负向的，只有 10 个是正向的。现在，让我们以1作为阈值并只预测负类的模型。通过这种方式，我们将得到一个真的 990 个负向的值，和10个假的负向值。此时模型的准确度是 99%。但是模型是无效的，因为它永远不会得到正向的值。</p>
+<p>准确度会带来误导，因为它并没有与其他指标关联起来。说到权衡。。。。。</p>
+<h3 id="权衡和曲线"><a href="#权衡和曲线" class="headerlink" title="权衡和曲线"></a>权衡和曲线</h3><p>我们已经介绍了关于真的和假的正向值比率的权衡，以及精度和回归值之间的权衡。我们还知道有很多的混淆矩阵，每个都有一个阈值。如果我们把这些都合并到一起呢？我要向您介绍接收器操作特性（ROC）和精确回归（PR）曲线！实际上，它们目前还不是曲线，但很快就是了。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F4da6066c-dec9-4175-8552-0fa8dd7a07c1%2FUntitled.png?table=block&id=bb91984d-29f5-4591-8ade-394eac5a6ac3&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1000&userId=&cache=v2"></p>
+<p>我们应给予 50% 的阈值计算出了模型的 TPR(回归值)91%,FPR 22% 和精度 83%。如果我们把它做成图像将会是上面这样。</p>
+<p>是时候试试不同的阈值了。</p>
+<h3 id="低阈值"><a href="#低阈值" class="headerlink" title="低阈值"></a>低阈值</h3><p>如果阈值是 30% 呢？如果预测的概率大于或者等于 30%，我们就认为数据是正向的，否则就是负向的。这是一个非常宽松的阈值，我们会得到什么？跟多的假的正向值和更少的假的负向值。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F302af8fe-1656-4527-9af3-2f2fe6f05cc8%2FUntitled.png?table=block&id=d9746ae5-b3cb-45cc-a525-0621241c29dc&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1570&userId=&cache=v2"></p>
+<p>你可以从上图中看到，降低阈值后，导致一个假的负向值变成了真的正向值（靠近 0.4 的蓝色的点），但是它同时导致一个真的负向值变成了一个假的正向值（靠近 0.4 的红色的点）。</p>
+<p>我们用 Scikit-Learn 的混淆矩阵函数验证一下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">confusion_matrix(y_val,(probabilities_val&gt;=<span class="number">0.3</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">array([[ <span class="number">6</span>,  <span class="number">3</span>],</span><br><span class="line">       [ <span class="number">0</span>, <span class="number">11</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>现在让我们把这些指标在图形上显示出来</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fd5819caa-730e-4ef5-8b2b-2d3e3cabc199%2FUntitled.png?table=block&id=71f3048d-ea47-4ab5-b82a-36eb462c9eb7&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1030&userId=&cache=v2"></p>
+<p>仍然不是曲线，我知道，但是我们应从这两个数据点上学到了一些东西。</p>
+<blockquote>
+<p>降低阈值会将您沿着两条曲线向右移动。</p>
+</blockquote>
+<p>我们来看看另一种情况。</p>
+<h3 id="高阈值"><a href="#高阈值" class="headerlink" title="高阈值"></a>高阈值</h3><p>如果调高阈值到 70% 呢？如果预测的概率大于等于 70%，我们就认为它是正向的，否则就是负向的。这是一个非常严格的阈值，会出现什么情况？更少的假的正向值，更多的假的负向值。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8d53e045-cf5a-4c63-8ae4-7132d074d3a7%2FUntitled.png?table=block&id=700a3592-2ec6-4b0e-808a-86c271b29dda&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1580&userId=&cache=v2"></p>
+<p>从上图你可以看出，提高阈值会导致两个假的正向值变成了真的正向值（靠近 0.6 的红点），但是也导致了一个真的正向值变成了一个假的负向值（靠近 0.6 的蓝点）。</p>
+<p>我们用 Scikit-Learn 的混淆矩阵函数验证一下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">confusion_matrix(y_val,(probabilities_val&gt;=<span class="number">0.7</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">array([[<span class="number">9</span>, <span class="number">0</span>],</span><br><span class="line">       [<span class="number">2</span>, <span class="number">9</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>好，我们把这个点画下来</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F50b24162-c971-4c4d-aa76-1ca97ce83313%2FUntitled.png?table=block&id=60693190-be33-4bf9-831c-6fb335bf127b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1030&userId=&cache=v2"></p>
+<p>现在我们可以把它称作曲线了。</p>
+<blockquote>
+<p>提高阈值会让数据向左移动。</p>
+</blockquote>
+<h3 id="ROC和PR曲线"><a href="#ROC和PR曲线" class="headerlink" title="ROC和PR曲线"></a>ROC和PR曲线</h3><p>我们需要尝试不同的阈值来创建一条曲线。现在是这乘以 10%。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">threshs=np.linspace(<span class="number">0</span>,<span class="number">1</span>,<span class="number">11</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Ff66549a0-0f80-40c3-b167-b8c2f97bd4c6%2FUntitled.png?table=block&id=8f6dd22e-00f9-4c48-94c5-ed091c8aa59b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1030&userId=&cache=v2"></p>
+<p>太棒了，我们终于绘制出了合适的额曲线。现在问你几个问题：</p>
+<ul>
+<li>在每个图中，哪个点对应于0的阈值（每个预测都是正的）？</li>
+<li>在每个图中，哪个点对应于1的阈值（每个预测都是 负的）？</li>
+<li>PR曲线中最右边的点代表什么？</li>
+<li>如果我提高阈值，我如何沿着曲线移动？</li>
+</ul>
+<p>你应该可以根据前面介绍的内容回答出来，下面是答案：</p>
+<ul>
+<li>0 阈值对应曲线的最右边的点</li>
+<li>1 阈值对应曲线最左边的点</li>
+<li>PR 曲线最右边的点代表了数据集中正向值的比例</li>
+<li>如果我提高阈值，数据点的位置会向两条曲线的左边移动</li>
+</ul>
+<p>现在我们再次使用 Scikit-Learn 的 roc_curve()和 precision_recall_curve()方法来验证：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">fpr,tpr,thresholds1=roc_curve(y_val,probabilities_val)</span><br><span class="line">prec,rec,thresholds2=precision_recall_curve(y_val,probabilities_val)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F4a998f36-ec0e-4bf1-bb42-ab37102d03d7%2FUntitled.png?table=block&id=92613290-e17d-4484-8027-5ce9fefce533&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1110&userId=&cache=v2"></p>
+<p>曲线形状是相同的，但是数据点不一样。</p>
+<blockquote>
+<p>为什么曲线的数据点和我们的不一样？</p>
+</blockquote>
+<p>简而言之，Scikit-Learn只使用有意义的阈值；也就是说，那些实际上对指标产生影响的阈值。如果稍微移动阈值不会改变任何点的分类，那么构建曲线并不重要。此外，请注意，两条曲线有不同的点数，因为不同的指标有不同的有意义的阈值。这些阈值不一定包括极端值：零和一。在Scikit-Learn的PR曲线中，最右边的点显然与我们的不同。</p>
+<blockquote>
+<p>“为什么PR曲线会下降到更低的精度？当我们提高阈值并沿着曲线向左移动时，它不是应该总是上升吗？”</p>
+</blockquote>
+<h3 id="精度的怪异现象"><a href="#精度的怪异现象" class="headerlink" title="精度的怪异现象"></a>精度的怪异现象</h3><p>很高兴你会问上面的问题。这种情况比较怪异并且有些反直觉，但是它经常发生，所以我们来咨询看看。为了演示为什么会出现这种现象，我用 0.4,0.5 和 0.57 这三个阈值分别绘制三条不同的概率直线。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F5db8d5a3-499c-44a1-a75f-b66dda15ac0d%2FUntitled.png?table=block&id=5d2876c8-86d7-44cc-a505-e050d3b749c4&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1100&userId=&cache=v2"></p>
+<p>最上面的图，阈值是 0.4，右边有 15 个点，其中 2 个是假的正向值，所以精度是</p>
+<p>$$<br>精度（阈值&#x3D;0.4）&#x3D;\frac{13}{13+2}&#x3D;0.8666<br>$$</p>
+<p>但是当我们将阈值设置为 0.5 时，我们丢失了一个真的 正向值，也就是说精度变小了。</p>
+<p>$$<br>精度（阈值&#x3D;0.4）&#x3D;\frac{12}{12+2}&#x3D;0.8571<br>$$</p>
+<p>不过，这是一个暂时的副作用。当我们把阈值再提高到 0.57 时，我们得到了摆脱假正向值的好处，从而提高了精度：</p>
+<p>$$<br>精度（阈值&#x3D;0.4）&#x3D;\frac{12}{12+1}&#x3D;0.9230<br>$$</p>
+<blockquote>
+<p>通常来说，提高阈值将减少假的正向值的数量并能提高精度。但是，同时我们会丢失一些真的正向值，这也在某种意义上降低了精度。很怪异，不是吗？</p>
+</blockquote>
+<h3 id="最好的和最坏的曲线"><a href="#最好的和最坏的曲线" class="headerlink" title="最好的和最坏的曲线"></a>最好的和最坏的曲线</h3><p>让我们提一个问题：什么是最好的或者说最坏的曲线是什么样子？</p>
+<p>最好的曲线代表模型完美的了预测所有的数据：它 100% 的预测了所有实际的正向值，并且对实际的负向值预测为 0%。当然，现实中不存在这样的模型。但是会有假象。这是我们会看到的假象。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F2e8d1bed-9ed2-4ada-a33b-acbd60a1c600%2FUntitled.png?table=block&id=6227e5d7-3271-4ddd-9663-cc52ed41e960&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1130&userId=&cache=v2"></p>
+<p>非常好！ 如果存在一个完美的模型，它的曲线实际上是正方形！ ROC 曲线的左上角以及 PR 曲线的右上角是（无法达到的）最佳点。 实际上，我们的逻辑回归还不错，但是，当然，我们的验证集非常简单。</p>
+<p>如果一个模型不考虑实际数据而输出所有的概率，那就太糟糕了。 我们可以简单地生成 0 到 1 之间均匀分布的值作为随机概率：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">np.random.seed(<span class="number">39</span>)</span><br><span class="line">random_probs=np.random.uniform(size=y_val.shape)</span><br><span class="line">fpr_random,tpr_random,thresholds1_randon=(</span><br><span class="line">    roc_curve(y_val,random_probs))</span><br><span class="line">prec_random,rec_random,thresholds2_random=(</span><br><span class="line">    precision_recall_curve(y_val,random_probs))</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F83ed2e90-5bec-445e-a6be-ca8eae928f4c%2FUntitled.png?table=block&id=76f5a92f-2a2e-4924-bdc5-6d2c36c84242&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1020&userId=&cache=v2"></p>
+<p>我们只有 20 个数据点，因此我们的曲线并不像理论上那么糟糕:-) 黑色虚线是两条曲线理论上最差的。 左边的对角线非常糟糕。 右边的情况有点微妙：最差的是一条水平线，但级别是由数据集中正样本的比例给出的。 在我们的示例中，20 个数据点中有 11 个正面示例，因此该线处于 0.55 的水平。</p>
+<h3 id="比较模型"><a href="#比较模型" class="headerlink" title="比较模型"></a>比较模型</h3><blockquote>
+<p>问：如果我有两个模型，我应该选择哪个？<br>答：最好的模型是那个有最好的曲线的。</p>
+</blockquote>
+<p>这里真正的问题是：如何比较曲线？ 它们越接近正方形，就越好，这一点我们已经知道了。 此外，如果一条曲线的所有点都高于另一条曲线的所有点，那么上面的曲线显然是最好的。</p>
+<p>问题是，两个不同的模型可能会产生在某个点彼此相交的曲线。 如果真是这样，那么就没有明显的赢家。</p>
+<p>解决这一困境的一种可能的解决方案是查看曲线下的面积。 其下方面积更大的曲线获胜！ 幸运的是，Scikit-Learn 有一个 auc()（曲线下面积）方法，我们可以用它来计算我们（好的）模型的曲线下面积：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 计算曲线的线下面积</span></span><br><span class="line">auroc = auc(fpr, tpr) </span><br><span class="line">aupr = auc(rec, prec) </span><br><span class="line"><span class="built_in">print</span>(auroc, aupr)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">0.9797979797979798</span> <span class="number">0.9854312354312356</span></span><br></pre></td></tr></table></figure>
+
+<p>非常接近完美的价值！ 但话又说回来，这是一个测试示例 - 您不应该期望现实中能达到这么好的效果。 那么随机模型呢？ 最差 ROC 曲线下面积的理论最小值为 0.5，即对角线下面积。 最差 PR 曲线下面积的理论最小值是数据集中正样本的比例，在我们的例子中为 0.55。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 计算随机模型的线下面积</span></span><br><span class="line">auroc_random = auc(fpr_random, tpr_random) </span><br><span class="line">aupr_random = auc(rec_random, prec_random) </span><br><span class="line"><span class="built_in">print</span>(auroc_random, aupr_random)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">0.505050505050505</span> <span class="number">0.570559046216941</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>本文我们没有过多的修改之前的训练模型管道数据。除了使用 Scikit-Learn来分离训练与评估数据外，数据准备部分基本上和之前的一样。模型配置部分的代码也基本上一样，但是我们修改了损失函数，所以它现在可以处理分类问题。在模型训练部分，我们完全复用了之前写好的 StepByStep 类。</p>
+<p>但是本文，在训练完模型后，我们可以使用类的 predict()方法为验证数据输出预测值，并使用 Scikit-Learn 的矩阵模型来计算了一系列的分类指标，比如混淆矩阵。</p>
+<h3 id="数据准备-1"><a href="#数据准备-1" class="headerlink" title="数据准备"></a>数据准备</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader,TensorDataset</span><br><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line"><span class="comment">#将Numpy的数组转换为PyTorch的张量</span></span><br><span class="line">x_train_tensor=torch.as_tensor(x_train).<span class="built_in">float</span>()</span><br><span class="line">y_train_tensor=torch.as_tensor(y_train.reshape(-<span class="number">1</span>,<span class="number">1</span>)).<span class="built_in">float</span>()</span><br><span class="line"></span><br><span class="line">x_val_tensor=torch.as_tensor(x_val).<span class="built_in">float</span>()</span><br><span class="line">y_val_tensor=torch.as_tensor(y_val.reshape(-<span class="number">1</span>,<span class="number">1</span>)).<span class="built_in">float</span>()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建包含所有数据的数据集</span></span><br><span class="line">train_dataset=TensorDataset(x_train_tensor,y_train_tensor)</span><br><span class="line">val_dataset=TensorDataset(x_val_tensor,y_val_tensor)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 为每个数据集创建一个加载器</span></span><br><span class="line">train_loader=DataLoader(</span><br><span class="line">  dataset=train_dataset,</span><br><span class="line">  batch_size=<span class="number">16</span>,</span><br><span class="line">  shuffle=<span class="literal">True</span></span><br><span class="line">)</span><br><span class="line">val_loader=DataLoader(dataset=val_dataset,batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型配置-1"><a href="#模型配置-1" class="headerlink" title="模型配置"></a>模型配置</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="comment"># 设置学习率</span></span><br><span class="line">lr=<span class="number">0.1</span></span><br><span class="line"></span><br><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model=nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;linear&#x27;</span>,nn.Linear(<span class="number">2</span>,<span class="number">1</span>))</span><br><span class="line"></span><br><span class="line"><span class="comment"># 定义 SGD 优化器来更新参数</span></span><br><span class="line">optimizer=optim.SGD(model.parameters(),lr=lr)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 定义 BCEWithLogitsLoss 作为损失函数</span></span><br><span class="line">loss_fn=nn.BCEWithLogitsLoss()</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型训练-1"><a href="#模型训练-1" class="headerlink" title="模型训练"></a>模型训练</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">n_epochs=<span class="number">100</span></span><br><span class="line">sbs=StepByStep(model,loss_fn,optimizer)</span><br><span class="line">sbs.set_loaders(train_loader,val_loader)</span><br><span class="line">sbs.train(n_epochs)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(model.state_dict())</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;linear.weight&#x27;</span>, tensor([[ <span class="number">1.1806</span>, -<span class="number">1.8693</span>]])), </span><br><span class="line">(<span class="string">&#x27;linear.bias&#x27;</span>, tensor([-<span class="number">0.0591</span>]))])</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型评估"><a href="#模型评估" class="headerlink" title="模型评估"></a>模型评估</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">logits_val=sbs.predict(x_val)</span><br><span class="line">probabilities_val=sigmoid(logits_val).squeeze()</span><br><span class="line">cm_thresh50=confusion_matrix(y_val,(probabilities_val&gt;=<span class="number">0.5</span>))</span><br><span class="line">cm_thresh50</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">array([[ <span class="number">7</span>,  <span class="number">2</span>],</span><br><span class="line">       [ <span class="number">1</span>, <span class="number">10</span>]])</span><br></pre></td></tr></table></figure>
+
+<h2 id="回顾"><a href="#回顾" class="headerlink" title="回顾"></a>回顾</h2><p>本文，我们介绍了与分类问题有关的很多问题，包括：</p>
+<ul>
+<li>什么是二元分类问题</li>
+<li>使用 Scikit_learn 的 make_moons()方法生成和准备演示数据集</li>
+<li>将 logits 定义为特征线性组合的结果</li>
+<li>了解什么是比率和对数比率</li>
+<li>了解了我们可以将 logits 当作是对数比率</li>
+<li>使用 sigmoid 函数将 logits 映射为概率</li>
+<li>理解了二元交叉损失以及它在 PyTorch 中的实现 nn.BCELoss()</li>
+<li>理解了nn.BCELoss()和 nn.BCEWithLogitsLoss()的区别</li>
+<li>强调了在模型的最后一层使用与不使用损失函数组合的重要性</li>
+<li>使用 PyTorch 损失函数的参数来处理不平衡数据集</li>
+<li>为一个分类问题配置模型，损失函数和优化器</li>
+<li>使用 StepByStep 类来训练模型</li>
+<li>理解了为什么验证数据的损失值可能比训练数据的损失值小</li>
+<li>用模型进行预测，并将预测的 logits 映射为概率</li>
+<li>使用分类阈值将概率转换为分类</li>
+<li>理解了什么是决策边界</li>
+<li>理解了类的可分离性和它与维度的关系</li>
+<li>探索了不同的分类阈值和它们在混淆矩阵中的效果</li>
+<li>学习了评估分类算法的典型指标，例如真正向率、假负向率、精确度和回归率</li>
+<li>根据为多个阈值计算的指标构建 ROC 和精确回归曲线</li>
+<li>理解了当提高阈值会造成精度损失的怪异现象背后的原因</li>
+<li>定义了什么是最好的和最坏的 ROC 以及 PR 曲线</li>
+<li>使用曲线的线下面积来比较模型的优劣</li>
+</ul>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/BCELoss/" rel="tag">BCELoss</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Logits/" rel="tag">Logits</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/PyTorch/" rel="tag">PyTorch</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Scikit/" rel="tag">Scikit</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/matplotlib/" rel="tag">matplotlib</a></li></ul></div><div class="post-nav"><a class="next" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a> <a href="/tags/%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/" style="font-size: 15px;">梯度下降</a> <a href="/tags/%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92/" style="font-size: 15px;">线性回归</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/FATE/" style="font-size: 15px;">FATE</a> <a href="/tags/%E4%BC%98%E5%8C%96%E5%99%A8/" style="font-size: 15px;">优化器</a> <a href="/tags/%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0/" style="font-size: 15px;">损失函数</a> <a href="/tags/sigmoid/" style="font-size: 15px;">sigmoid</a> <a href="/tags/MSELoss/" style="font-size: 15px;">MSELoss</a> <a href="/tags/Linear/" style="font-size: 15px;">Linear</a> <a href="/tags/Sequential/" style="font-size: 15px;">Sequential</a> <a href="/tags/TensorBoard/" style="font-size: 15px;">TensorBoard</a> <a href="/tags/matplotlib/" style="font-size: 15px;">matplotlib</a> <a href="/tags/Logits/" style="font-size: 15px;">Logits</a> <a href="/tags/Scikit-Learn/" style="font-size: 15px;">Scikit-Learn</a> <a href="/tags/BCELoss/" style="font-size: 15px;">BCELoss</a> <a href="/tags/Scikit/" style="font-size: 15px;">Scikit</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/02/07/%E7%94%A8AI%E6%A8%A1%E5%9E%8B%E5%A4%84%E7%90%86%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98/">用AI模型处理分类问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E9%87%8D%E6%96%B0%E6%80%9D%E8%80%83%E8%AE%AD%E7%BB%83%E5%BE%AA%E7%8E%AF/">重新思考训练循环</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/26/%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92%E9%97%AE%E9%A2%98/">一个简单的线性回归问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/Fate%E7%9A%84%E5%8D%95%E6%9C%BA%E9%83%A8%E7%BD%B2/">Fate的单机部署</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/%E5%8F%AF%E8%A7%86%E5%8C%96%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/">可视化梯度下降</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/10/MacOS%E4%B8%8A%E5%AE%89%E8%A3%85PyTorch%E7%8E%AF%E5%A2%83/">MacOS上安装PyTorch环境</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/09/%E5%86%99%E4%B8%80%E6%AE%B5%E7%A8%8B%E5%BA%8F%E8%AE%A9GPT%E5%86%99%E9%A6%96%E8%AF%97/">写一段程序让GPT写首诗</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/08/%E4%BD%BF%E7%94%A8BERT%E5%AE%9E%E7%8E%B0%E4%B8%AD%E6%96%87%E5%8F%A5%E5%AD%90%E5%85%B3%E8%81%94%E6%8E%A8%E6%96%AD/">使用BERT实现中文句子关联推断</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/08/%E4%BD%BF%E7%94%A8BERT%E5%AE%9E%E7%8E%B0%E4%B8%AD%E6%96%87%E6%83%85%E6%84%9F%E5%88%86%E7%B1%BB/">使用BERT实现中文情感分类</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+  });
+</script><script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML" async></script><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
