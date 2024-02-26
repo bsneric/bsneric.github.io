@@ -1,0 +1,884 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>卷积神经网络 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">卷积神经网络</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">卷积神经网络</h1><div class="post-meta">2024-02-26<span> | </span><span class="category"><a href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></span></div><div class="post-content"><p>本章我们将学习以下内容</p>
+<ul>
+<li>详细了解卷积层的算法</li>
+<li>创建一个多类型分类的模型</li>
+<li>理解 softmax 函数的职责</li>
+<li>使用负对数似然和交叉熵损失</li>
+<li>可视化我们卷积神经网络学到的过滤器</li>
+<li>理解并使用钩子来捕获中间层的输出</li>
+<li>可视化特征图，以更好地了解模型内部发生了什么</li>
+</ul>
+<p>本章要导入的依赖如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> random</span><br><span class="line"><span class="keyword">import</span> numpy <span class="keyword">as</span> np</span><br><span class="line"><span class="keyword">from</span> PIL <span class="keyword">import</span> Image</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="keyword">import</span> torch.nn.functional <span class="keyword">as</span> F</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader,Dataset</span><br><span class="line"><span class="keyword">from</span> torchvision.transforms <span class="keyword">import</span> Compose,Normalize</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> data_generation.image_classification <span class="keyword">import</span> generate_dataset</span><br><span class="line"><span class="keyword">from</span> stepbystep.v0 <span class="keyword">import</span> StepByStep</span><br></pre></td></tr></table></figure>
+
+<h2 id="卷积"><a href="#卷积" class="headerlink" title="卷积"></a>卷积</h2><p>在第 4 章中，我们介绍了像素和特征。我们将每个像素当作一个独立的特征，因此当将图像数据扁平化后丢失了信息。我们还介绍了权重和像素，以及如何将权重转换为一个图像或者更明确一点，一个过滤器。</p>
+<p>现在，是时候更进一步讨论并学习卷积了。 卷积是“对两个函数（f 和 g）进行的数学运算，产生第三个函数 (f * g)，表示一个函数的形状如何被另一个函数修改。” 在图像处理中，卷积矩阵被称为内核或过滤器。 典型的图像处理操作（例如模糊、锐化、边缘检测等）是通过在内核和图像之间执行卷积来完成的。</p>
+<h3 id="过滤器-内核"><a href="#过滤器-内核" class="headerlink" title="过滤器&#x2F;内核"></a>过滤器&#x2F;内核</h3><p>简而言之，定义一个过滤器（或内核，但我们在这里坚持使用“过滤器”）并将该过滤器应用于图像（即对图像进行卷积）。 通常，滤波器是小方阵。 卷积本身是通过在图像上重复应用滤波器来执行的。 让我们尝试一个具体的例子来让它更清楚。</p>
+<p>我们使用单通道图像，以及有史以来最无聊的过滤器，即识别过滤器。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F5239207d-e060-44e7-86ec-10af3c9d8263%2FUntitled.png?table=block&id=f3a1ffed-1369-4ebd-a807-bc061f41f74b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=710&userId=&cache=v2"></p>
+<p>看到图像左上角的灰色区域，它的大小与滤镜相同吗？ 这就是应用滤镜的区域，称为感受野，与人类视觉的工作方式进行类比。此外，查看图像下方的形状：它们遵循 PyTorch 使用的 NCHW 形状约定。 有一张图像，它有一个通道、大小为六乘六像素。 还有一 个过滤器，它有1 个通道、大小为 3 x 3 像素。最后，星号代表两者的卷积运算。</p>
+<p>让我们创建 Numpy 数组来执行操作； 毕竟，用代码来理解一切都会变得更容易，对吗？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">single=np.array(</span><br><span class="line">    [[[[<span class="number">5</span>,<span class="number">0</span>,<span class="number">8</span>,<span class="number">7</span>,<span class="number">8</span>,<span class="number">1</span>],</span><br><span class="line">    [<span class="number">1</span>,<span class="number">9</span>,<span class="number">5</span>,<span class="number">0</span>,<span class="number">7</span>,<span class="number">7</span>],</span><br><span class="line">    [<span class="number">6</span>,<span class="number">0</span>,<span class="number">2</span>,<span class="number">4</span>,<span class="number">6</span>,<span class="number">6</span>],</span><br><span class="line">    [<span class="number">9</span>,<span class="number">7</span>,<span class="number">6</span>,<span class="number">6</span>,<span class="number">8</span>,<span class="number">4</span>],</span><br><span class="line">    [<span class="number">8</span>,<span class="number">3</span>,<span class="number">8</span>,<span class="number">5</span>,<span class="number">1</span>,<span class="number">3</span>],</span><br><span class="line">    [<span class="number">7</span>,<span class="number">2</span>,<span class="number">7</span>,<span class="number">0</span>,<span class="number">1</span>,<span class="number">0</span>]]]]</span><br><span class="line">)</span><br><span class="line">single.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1</span>, <span class="number">1</span>, <span class="number">6</span>, <span class="number">6</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">identity=np.array(</span><br><span class="line">    [[[</span><br><span class="line">        [<span class="number">0</span>,<span class="number">0</span>,<span class="number">0</span>],</span><br><span class="line">        [<span class="number">0</span>,<span class="number">1</span>,<span class="number">0</span>],</span><br><span class="line">        [<span class="number">0</span>,<span class="number">0</span>,<span class="number">0</span>]</span><br><span class="line">    ]]]</span><br><span class="line">)</span><br><span class="line">identity.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1</span>, <span class="number">1</span>, <span class="number">3</span>, <span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="卷积-1"><a href="#卷积-1" class="headerlink" title="卷积"></a>卷积</h3><blockquote>
+<p>过滤器是如何修改所选区域&#x2F;感受野的？</p>
+</blockquote>
+<p>它实际上非常简单：它在所选区域和过滤器这两者之间执行逐元素乘法，然后将所有内容相加。 就是这样！ 让我们放大所选区域来查看一下。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F0a23a84b-06f8-4943-8097-ea68a9304c54%2FUntitled.png?table=block&id=a2fc8b66-78be-40df-a242-58740a061254&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1080&userId=&cache=v2"></p>
+<p>在代码中，我们必须对相应的区域进行切片（记住 NCHW 形状，因此我们在最后两个维度上进行操作）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">region=single[:,:,<span class="number">0</span>:<span class="number">3</span>,<span class="number">0</span>:<span class="number">3</span>]</span><br><span class="line">filtered_region=region*identity</span><br><span class="line">total=filtered_region.<span class="built_in">sum</span>()</span><br><span class="line">total</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">9</span></span><br></pre></td></tr></table></figure>
+
+<p>这样我们就完成了第一个区域的处理。</p>
+<blockquote>
+<p>“等等，输入了九个像素值，只计算出一个值？”</p>
+</blockquote>
+<p>说的对，完全正确！ 进行卷积会产生尺寸缩小的图像。 如果我们把缩小的图片复原，就很容易明白为什么。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fb339b4a4-1618-474c-8da8-558ee17e35c7%2FUntitled.png?table=block&id=be76be37-b484-41f8-8f74-607fa2d75fff&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1500&userId=&cache=v2"></p>
+<p>由于过滤器应用于灰色区域，并且我们使用的是识别过滤器，因此很容易看出它只是复制区域中心的值。 剩余的值只是简单地乘以零，并不等于总和。 但即使如此，也不会改变一个操作的结果是单个值的事实。</p>
+<h2 id="继续移动"><a href="#继续移动" class="headerlink" title="继续移动"></a>继续移动</h2><p>接下来，我们将该区域向右移动一步； 也就是说，我们更改感受野并再次应用过滤器。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fe69fc5de-0570-4a03-b347-7001d4386051%2FUntitled.png?table=block&id=1c1c1c1e-ba98-4c8f-9a2c-dd2e00cf7c8f&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1460&userId=&cache=v2"></p>
+<p>移动的大小（以像素为单位）称为步幅。 在我们的示例中，步幅是一。</p>
+<p>在代码中意味着我们要修改数组切片的索引：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">region=single[:,:,<span class="number">0</span>:<span class="number">3</span>,(<span class="number">0</span>+<span class="number">1</span>):(<span class="number">3</span>+<span class="number">1</span>)]</span><br><span class="line">filtered_region=region*identity</span><br><span class="line">total=filtered_region.<span class="built_in">sum</span>()</span><br><span class="line">total</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">5</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8bd60d93-c10d-4fdd-8736-b7c38d2ee128%2FUntitled.png?table=block&id=f6ff240b-0606-4c80-94e5-1e8febe6559c&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1510&userId=&cache=v2"></p>
+<p>我们的转换结果图像的第二个像素值有了。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F164ef69a-a3af-4618-b7d1-ddc5f34053d3%2FUntitled.png?table=block&id=4f9f8036-781d-4921-becf-dd74bfaab94b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1500&userId=&cache=v2"></p>
+<p>我们可以继续向右移动灰色区域，直到不能移动。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fab627c0c-6173-4dee-bfed-a6f19a63ffc9%2FUntitled.png?table=block&id=acef31d7-976e-403b-8f0e-7451d581cfc2&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1550&userId=&cache=v2"></p>
+<p>右边的第四步实际上会将部分区域放置在输入图像之外。 这是不允许的！</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">last_horizontal_region = single[:, :, <span class="number">0</span>:<span class="number">3</span>, (<span class="number">0</span>+<span class="number">4</span>):(<span class="number">3</span>+<span class="number">4</span>)]</span><br></pre></td></tr></table></figure>
+
+<p>此时选择的区域的形状和过滤器的不匹配，所以当我们执行元素乘法时，会失败：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">last_horizontal_region * identity</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ValueError: operands could <span class="keyword">not</span> be broadcast together <span class="keyword">with</span></span><br><span class="line"> shapes (<span class="number">1</span>,<span class="number">1</span>,<span class="number">3</span>,<span class="number">2</span>) (<span class="number">1</span>,<span class="number">1</span>,<span class="number">3</span>,<span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="形状"><a href="#形状" class="headerlink" title="形状"></a>形状</h3><p>接下来，我们回到左侧，向下移动一步。 如果我们重复该操作，覆盖所有有效区域，我们最终会得到较小的结果图像（右侧的图）。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F2c2acabe-67f3-45e7-9851-115a1bf2d578%2FUntitled.png?table=block&id=b9f2ebb3-f1ac-42ca-895e-02e7253e201e&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1470&userId=&cache=v2"></p>
+<blockquote>
+<p>它会有多小？</p>
+</blockquote>
+<p>这取决于过滤器的大小。</p>
+<blockquote>
+<p>过滤器越大，生成的图像越小。</p>
+</blockquote>
+<p>由于应用过滤器总是产生单个值，因此减少量等于过滤器大小减一。 如果输入图像具有 ($h_i,w_i$) 形状（我们现在忽略通道尺寸），并且滤波器具有 ($h_f,w_f$) 形状，则结果图像的形状由下式给出：</p>
+<p>$$<br>(h_i,w_i)*(h_f,w_f)&#x3D;(h_i-(h_f-1),w_i-(w_f-1))<br>$$</p>
+<p>如果我们假设过滤器是大小为 f 的方阵，我们可以将上面的表达式简化为：</p>
+<p>$$<br>(h_i,w_i)*f&#x3D;(h_i-f+1,w_i-f+1)<br>$$</p>
+<p>有道理，对吧？过滤器的尺寸从 (f, f) 减小到 (1, 1)，因此操作将原始尺寸缩小 (f-1)。</p>
+<blockquote>
+<p>但是，我想保持图像的尺寸，可能吗？</p>
+</blockquote>
+<p>当然可以，在这种情况下，可以通过填充的方式解决。 我们将分几个部分来讨论这个问题</p>
+<h3 id="PyTorch中的卷积"><a href="#PyTorch中的卷积" class="headerlink" title="PyTorch中的卷积"></a>PyTorch中的卷积</h3><p>现在我们知道了卷积的工作原理，让我们使用 PyTorch 尝试一下。 首先，我们需要将图像和过滤器数组转换为张量：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">iamge=torch.as_tensor(single).<span class="built_in">float</span>()</span><br><span class="line">kernel_identity=torch.as_tensor(identity).<span class="built_in">float</span>()</span><br></pre></td></tr></table></figure>
+
+<p>由于内核和过滤器可以互换使用，特别是当涉及到不同方法的参数时，我将变量 kernel_identity 称为变量，即使它与我们迄今为止使用的身份过滤器完全相同。</p>
+<p>就像我们在第 4 章中看到的激活函数一样，卷积有两种类型：函数式和模块式。 不过，两者之间存在根本区别：函数卷积将内核&#x2F;过滤器作为参数，而模块具有（可学习的）权重来表示内核&#x2F;过滤器。</p>
+<p>让我们使用函数卷积 F.conv2d() 将识别过滤器应用于我们的输入图像（请注意，我们使用 stride&#x3D;1，因为我们一次将区域移动到一个像素周围）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">convolved=F.conv2d(iamge,kernel_identity,stride=<span class="number">1</span>)</span><br><span class="line">convolved</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>],</span><br><span class="line">          [<span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>如你所见，我们得到了签名手工计算一样的结果。</p>
+<p>现在，让我们把注意力转向 PyTorch 的卷积模块 nn.Conv2d。 它有很多参数； 让我们重点关注前四个：</p>
+<ul>
+<li>in_channels:输入图像点的通道数量。</li>
+<li>out_channels:由卷积产生的通道数量。</li>
+<li>kernel_size: 卷积过滤器&#x2F;内核的大小。</li>
+<li>stride: 所选区域移动的步幅。</li>
+</ul>
+<p>这里有几件事需要注意。 首先，内核&#x2F;过滤器本身没有参数，只有一个 kernel_size 参数。</p>
+<blockquote>
+<p>实际的过滤器，就是用于执行元素乘积的方阵。</p>
+</blockquote>
+<p>其次，可以产生多个通道作为输出。 它只是意味着该模块将学习多个过滤器。 每个过滤器都会产生不同的结果，这里称为通道。</p>
+<p>到目前为止，我们一直使用单通道图像作为输入，并对其应用一个过滤器（大小为三乘三），一次移动一个像素，从而每个通道产生一个输出。 代码实现如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">conv=nn.Conv2d(in_channels=<span class="number">1</span>,out_channels=<span class="number">1</span>,kernel_size=<span class="number">3</span>,stride=<span class="number">1</span>)</span><br><span class="line">conv(image)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[-<span class="number">2.4966</span>, -<span class="number">3.7549</span>, -<span class="number">5.2982</span>, -<span class="number">2.3208</span>],</span><br><span class="line">          [-<span class="number">5.6142</span>, -<span class="number">4.2400</span>, -<span class="number">4.3098</span>, -<span class="number">3.2502</span>],</span><br><span class="line">          [-<span class="number">2.8749</span>, -<span class="number">1.7524</span>, -<span class="number">2.1310</span>, -<span class="number">3.0209</span>],</span><br><span class="line">          [-<span class="number">4.9664</span>, -<span class="number">3.6826</span>, -<span class="number">5.5348</span>, -<span class="number">3.0797</span>]]]],</span><br><span class="line">       grad_fn=&lt;ConvolutionBackward0&gt;)</span><br></pre></td></tr></table></figure>
+
+<p>这些结果现在是胡乱的数字（你的结果将与我的不同），因为卷积模块随机初始化代表内核&#x2F;过滤器的权重。</p>
+<blockquote>
+<p>这就是卷积模块的全部要点：它将自行学习内核&#x2F;过滤器。</p>
+<p>在传统的计算机视觉中，人们会为了不同的目的开发不同的过滤器：模糊、锐化、边缘检测等等。<br>但是，与其聪明地尝试手动设计一个过滤器来解决给定问题，为什么不将过滤器定义也叫给神经网络处理呢？ 这样，审计网络计算出与当前特征相关的过滤器。<br>毫不奇怪，生成的图像现在显示 grad_fn 属性：它将用于计算梯度，以便网络实际上可以学习如何更改表示过滤器的权重。</p>
+</blockquote>
+<blockquote>
+<p>我能让网络一次学习多个过滤器吗？</p>
+</blockquote>
+<p>当然可以，这是 out_channels 参数的作用。如果我们设置为 2，他会生成两个（随机初始化的）过滤器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">conv_multiple=nn.Conv2d(in_channels=<span class="number">1</span>,out_channels=<span class="number">2</span>,kernel_size=<span class="number">3</span>,stride=<span class="number">1</span>)</span><br><span class="line">conv_multiple.weight</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">Parameter containing:</span><br><span class="line">tensor([[[[ <span class="number">0.1232</span>, -<span class="number">0.2498</span>, -<span class="number">0.3058</span>],</span><br><span class="line">          [-<span class="number">0.1089</span>, -<span class="number">0.1687</span>, -<span class="number">0.0771</span>],</span><br><span class="line">          [-<span class="number">0.2484</span>,  <span class="number">0.0761</span>,  <span class="number">0.2232</span>]]],</span><br><span class="line"></span><br><span class="line">        [[[-<span class="number">0.0729</span>,  <span class="number">0.3213</span>, -<span class="number">0.0649</span>],</span><br><span class="line">          [ <span class="number">0.0886</span>, -<span class="number">0.0603</span>,  <span class="number">0.2111</span>],</span><br><span class="line">          [-<span class="number">0.1545</span>, -<span class="number">0.1815</span>, -<span class="number">0.0717</span>]]]], requires_grad=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+<p>看到了吗？有两个三乘三的权重矩阵表示的过滤器（你的输出值可能和我的不同）。</p>
+<blockquote>
+<p>即使你值有一个输入的通道，也可以获得多个通道的输出。</p>
+</blockquote>
+<blockquote>
+<p>剧透：神经网络可以学到的过滤器有很多种，可以识别边缘、模式、甚至是更复杂的形状（比如面部识别）。我们将在后续的章节中介绍这些过滤器。</p>
+</blockquote>
+<p>我们还可以通过设置权重来强制卷积模块使用特定的过滤器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> torch.no_grad():</span><br><span class="line">    conv.weight[<span class="number">0</span>]=kernel_identity</span><br><span class="line">    conv.bias[<span class="number">0</span>]=<span class="number">0</span></span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>注意：设置权重是严格的无梯度操作，因此您应该始终使用 no_grad() 上下文管理器。</p>
+</blockquote>
+<p>在上面的代码片段中，我们强制模块使用我们迄今为止一直在使用的（无聊的）识别器内核。 正如预期的那样，如果我们对输入图像进行卷积，我们将得到熟悉的结果：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">conv(image)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>],</span><br><span class="line">          [<span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>]]]], grad_fn=&lt;ConvolutionBackward0&gt;)</span><br></pre></td></tr></table></figure>
+
+<p>设置权重以获得特定的过滤器是迁移学习的核心。 其他人训练了一个模型，该模型学习了很多有用的过滤器，所以我们不必再次学习它们。 我们可以设置相应的权重并从那里开始。 我们将在第 7 章的实践中看到这一点。</p>
+<h3 id="步幅"><a href="#步幅" class="headerlink" title="步幅"></a>步幅</h3><p>到目前为止，我们一直将感兴趣的区域一次移动一个像素：一步。 让我们尝试以两步进行更改，看看生成的图像会发生什么情况。 我不会在这里重复第一步，因为它总是相同的：灰色区域以数字九为中心。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F4519a09b-c818-4122-9dde-2a1bc9951ad0%2FUntitled.png?table=block&id=d77b3c35-d234-46b7-a98d-3c2250ea9390&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1460&userId=&cache=v2"></p>
+<p>第二步，如上图所示，显示灰色区域向右移动了两个像素：即跨了两个像素。</p>
+<p>此外，请注意，如果我们再采取两个像素的步幅，灰色区域将部分放置在底层图像之外。 这是一个很大的禁忌，因此水平移动时只有两个有效操作。 当我们垂直移动时，最终也会发生同样的事情。 向下两个像素的一步很好，但第二步将再次失败。</p>
+<p>经过四次有效操作后得到的图像如下所示。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F299aa1ff-2b4e-4600-822d-758f52abafe8%2FUntitled.png?table=block&id=5c14cf95-de74-4395-99b0-c52c8886f4b8&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1520&userId=&cache=v2"></p>
+<p>识别器内核可能很无聊，但它对于解释卷积的内部工作原理绝对有用。 上图中非常清楚结果图像中的像素值来自哪里。另外，请注意，使用较大的步幅会使生成的图像的形状变得更小。</p>
+<blockquote>
+<p>更大的步幅，会产生更小的图像。</p>
+</blockquote>
+<p>我们可以将上述结算过程总结公式如下：</p>
+<p>$$<br>(h_i,w_i)*f&#x3D;(\frac{h_i-f+1}{s},\frac{w_i-f+1}{s})<br>$$</p>
+<p>如前所说，步幅只是一个参数，我们看看 PyTorch 中的实现：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">convolved_stride2=F.conv2d(image,kernel_identity,stride=<span class="number">2</span>)</span><br><span class="line">convolved_stride2</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">9.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">6.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>非常棒，运行正常。</p>
+<p>到目前为止，我们执行的操作都是缩小图像。 如何将它们恢复到原来的样子，我的意思是，大小？</p>
+<h3 id="Padding"><a href="#Padding" class="headerlink" title="Padding"></a>Padding</h3><p>padding就是填充的意思。 我们需要填充原始图像，以便它能够承受对其大小的“攻击”。</p>
+<blockquote>
+<p>“如何填充图像？”</p>
+</blockquote>
+<p>很高兴你问了！ 只需在其周围添加零即可。</p>
+<p>![]<a target="_blank" rel="noopener" href="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa885132d-82a3-4148-a412-44ae50561680%2FUntitled.png?table=block&id=4e38fedc-6af9-4625-8df0-c733c97682f6&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1470&userId=&cache=v2">https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa885132d-82a3-4148-a412-44ae50561680%2FUntitled.png?table=block&amp;id=4e38fedc-6af9-4625-8df0-c733c97682f6&amp;spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&amp;width=1470&amp;userId=&amp;cache=v2</a>)</p>
+<p>明白了吗？ 通过在其周围添加零的列和行，我们扩展输入图像，使灰色区域开始以输入图像的实际左上角为中心。 这个简单的技巧可用于保留图像的原始大小。</p>
+<p>在代码中我们可以使用 F.pad() 活儿在 nn.ConstantPad2d来实现。我们看看实际的代码：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">constant_padder=nn.ConstantPad2d(padding=<span class="number">1</span>,value=<span class="number">0</span>)</span><br><span class="line">constant_padder(image)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">6.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">9.</span>, <span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>, <span class="number">4.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>有两个参数：padding，用于填充图像中的列数和行数； 和值，用于填充这些新列和行的值。 还可以通过在填充参数中指定表示（左、右、上、下）的元组来进行非对称填充。 因此，如果我们只在左侧和右侧填充图像，则参数将如下所示：(1, 1, 0, 0)。</p>
+<p>我们可以通过函数填充来实现相同的功能：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">padded=F.pad(image,pad=(<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>),mode=<span class="string">&#x27;constant&#x27;</span>,value=<span class="number">0</span>)</span><br><span class="line">padded</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">6.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">9.</span>, <span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>, <span class="number">4.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>, <span class="number">0.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>在函数版本中，必须将填充指定为元组。 value 参数很简单，还有另一个参数 mode，它被设置为常量以匹配上面的模块版本。</p>
+<blockquote>
+<p>在 PyTorch 的文档中，有一条关于使用填充时可能出现的再现性问题的注释警告：<br>“当使用 CUDA 后端时，此操作可能会在其后向传递中引发不确定性行为，而这种行为不易关闭。请参阅有关背景再现性的注释。”<br>让我觉得有点奇怪的是，如此简单的操作会危及可重复性。</p>
+</blockquote>
+<blockquote>
+<p>“还有哪些其他可用模式？”</p>
+</blockquote>
+<p>还有其他三种模式：复制、反射和循环。 让我们将其可视化。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F828c4502-74c5-4b13-a001-1a12c7630001%2FUntitled.png?table=block&id=295e0fe6-5715-4f67-a4d7-d244b7ac0696&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1530&userId=&cache=v2"></p>
+<p>在复制填充中，填充的像素与最接近的真实像素具有相同的值。 填充角与真实角具有相同的值。 其他列（左和右）和行（顶部和底部）复制原始图像的相应值。 复制中使用的值是较深的橙色阴影。</p>
+<p>在 PyTorch 中，可以使用带有 mode&#x3D;”replicate” 的函数形式 F.pad()，或使用模块版本 nn.ReplicationPad2d：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">replication_padder=nn.ReplicationPad2d(padding=<span class="number">1</span>)</span><br><span class="line">replication_padder(image)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">5.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">5.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">1.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">6.</span>, <span class="number">6.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">6.</span>],</span><br><span class="line">          [<span class="number">9.</span>, <span class="number">9.</span>, <span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>, <span class="number">4.</span>, <span class="number">4.</span>],</span><br><span class="line">          [<span class="number">8.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">3.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">0.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">0.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>在反射填充中，它变得有点棘手。 就像外部的列和行被用作反射的轴一样。 因此，左侧填充的列（暂时忘记角）反映了第二列（因为第一列是反射轴）。 同样的推理也适用于右侧填充的列。 类似地，顶部填充的行反映第二行（因为第一行是反射轴），并且相同的推理也适用于底部填充的行。 反射中使用的值是较深的橙色阴影。 角点的值与原始图像的反射行和列的交集相同。 希望图像能比我的文字更好地传达这个想法。</p>
+<p>在 PyTorch 中，您可以使用带有 mode&#x3D;”reflect” 的函数形式 F.pad()，或使用模块版本 nn.ReflectionPad2d：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">reflection_padder=nn.ReflectionPad2d(padding=<span class="number">1</span>)</span><br><span class="line">reflection_padder(image)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">9.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">8.</span>],</span><br><span class="line">          [<span class="number">9.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">6.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">6.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">9.</span>, <span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>, <span class="number">4.</span>, <span class="number">8.</span>],</span><br><span class="line">          [<span class="number">3.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">2.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">3.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">1.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>在圆形填充中，最左（最右）列被复制为右（左）填充列（现在也忘记角）。 同样，最顶部（最底部）的行被复制为底部（顶部）填充的行。 角接收完全相对的角的值：左上角填充的像素接收原始图像右下角的值。 填充中使用的值再次采用较深的橙色阴影。</p>
+<p>在 PyTorch 中，您必须使用模式为“circular”的函数形式 F.pad()，因为没有圆形填充的模块版本：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">F.pad(image,pad=(<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>),mode=<span class="string">&#x27;circular&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">0.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">1.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">5.</span>],</span><br><span class="line">          [<span class="number">7.</span>, <span class="number">1.</span>, <span class="number">9.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">7.</span>, <span class="number">7.</span>, <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">6.</span>, <span class="number">6.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">4.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">6.</span>],</span><br><span class="line">          [<span class="number">4.</span>, <span class="number">9.</span>, <span class="number">7.</span>, <span class="number">6.</span>, <span class="number">6.</span>, <span class="number">8.</span>, <span class="number">4.</span>, <span class="number">9.</span>],</span><br><span class="line">          [<span class="number">3.</span>, <span class="number">8.</span>, <span class="number">3.</span>, <span class="number">8.</span>, <span class="number">5.</span>, <span class="number">1.</span>, <span class="number">3.</span>, <span class="number">8.</span>],</span><br><span class="line">          [<span class="number">0.</span>, <span class="number">7.</span>, <span class="number">2.</span>, <span class="number">7.</span>, <span class="number">0.</span>, <span class="number">1.</span>, <span class="number">0.</span>, <span class="number">7.</span>],</span><br><span class="line">          [<span class="number">1.</span>, <span class="number">5.</span>, <span class="number">0.</span>, <span class="number">8.</span>, <span class="number">7.</span>, <span class="number">8.</span>, <span class="number">1.</span>, <span class="number">5.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>通过填充图像，如果您选择将越来越多的行和列填充到输入图像中，则可以获得与输入图像形状相同的结果图像，甚至更大。 假设我们正在进行大小为 p 的对称填充，则生成的形状由以下公式给出：</p>
+<p>$$<br>(h_i,w_i)*f&#x3D;(\frac{(h_i+2p)-f+1}{s},\frac{(w_i+2p)-f+1}{s})<br>$$</p>
+<p>我们基本上将原始尺寸各扩展了 2p 像素。</p>
+<h3 id="一个真正的过滤器"><a href="#一个真正的过滤器" class="headerlink" title="一个真正的过滤器"></a>一个真正的过滤器</h3><p>识别过滤器讲的差不多了。我们来试试传统计算机视觉中使用的“边缘识别”过滤器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">edge=np.array(</span><br><span class="line">    [[[</span><br><span class="line">        [<span class="number">0</span>,<span class="number">1</span>,<span class="number">0</span>],</span><br><span class="line">        [<span class="number">1</span>,-<span class="number">4</span>,<span class="number">1</span>],</span><br><span class="line">        [<span class="number">0</span>,<span class="number">1</span>,<span class="number">0</span>]</span><br><span class="line">    ]]]</span><br><span class="line">)</span><br><span class="line">kernel_edge=torch.as_tensor(edge).<span class="built_in">float</span>()</span><br><span class="line">kernel_edge.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.Size([<span class="number">1</span>, <span class="number">1</span>, <span class="number">3</span>, <span class="number">3</span>])</span><br></pre></td></tr></table></figure>
+
+<p>让我们将其应用到（填充的）输入图像的不同区域。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F83339036-4935-4448-a06c-f8d1e03d270b%2FUntitled.png?table=block&id=49603058-ea15-4054-aa56-a6a6d12e02ca&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1450&userId=&cache=v2"></p>
+<p>正如您所看到的，除了身份过滤器之外，过滤器并不简单地复制中心的值。 逐元素乘法终于有意义了。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8dd15e66-3bcf-4edb-86b0-6fea343737ac%2FUntitled.png?table=block&id=a2628f99-4854-4c61-9975-ee4c4fb8ef9b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1480&userId=&cache=v2"></p>
+<p>让我们将此过滤器应用于我们的图像，以便我们可以在下一步操作中使用生成的图像：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">padded=F.pad(image,pad=(<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>,<span class="number">1</span>),mode=<span class="string">&#x27;constant&#x27;</span>,value=<span class="number">0</span>)</span><br><span class="line">conv_padded=F.conv2d(padded,kernel_edge,stride=<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<h2 id="池化"><a href="#池化" class="headerlink" title="池化"></a>池化</h2><p>现在我们又回到了缩小图像的领域。 池化与以前的操作不同：它将图像分割成小块，对每个块执行操作（产生单个值），然后将这些块放在一起作为结果图像。 </p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F69f6274b-8120-42ba-be06-988e8e5e7e1f%2FUntitled.png?table=block&id=4da9957e-042a-4f0e-8f23-0be5a5e4f48d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1420&userId=&cache=v2"></p>
+<p>在上图中，我们正在执行内核大小为 2 的最大池化（在矩阵中取最大的值作为结果值）。 尽管这与我们已经看到的过滤器不太一样，但它仍然被称为内核。</p>
+<blockquote>
+<p>在此示例中，假设步幅与内核大小相同。</p>
+</blockquote>
+<p>我们的输入图像被分成九个块，我们对每个块执行一个简单的最大操作（因此，最大池化）（实际上，它只是取每个块中的最大值）。 然后，将这些值按顺序放在一起，以生成较小的结果图像。</p>
+<blockquote>
+<p>池化内核越大，生成的图像越小。</p>
+</blockquote>
+<p>二乘二的池化内核会产生尺寸为原始尺寸一半的图像。 三乘三的池化内核使生成的图像大小为原始图像的三分之一，依此类推。 此外，只有完整的块才算数：如果我们在 6×6 图像中尝试使用 4×4 的内核，则只有一个块适合，并且生成的图像将具有单个像素。</p>
+<p>在 PyTorch 中，像往常一样，我们有两种形式：F.max_pool2d() 和 nn.MaxPool2d。 让我们使用函数形式来复制上图中的最大池化：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pooled=F.max_pool2d(conv_padded,kernel_size=<span class="number">2</span>)</span><br><span class="line">pooled</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">22.</span>, <span class="number">23.</span>, <span class="number">11.</span>],</span><br><span class="line">          [<span class="number">24.</span>,  <span class="number">7.</span>,  <span class="number">1.</span>],</span><br><span class="line">          [<span class="number">13.</span>, <span class="number">13.</span>, <span class="number">13.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>然后让我们使用模块版本来说明大型 4×4 池化：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">maxpool4=nn.MaxPool2d(kernel_size=<span class="number">4</span>)</span><br><span class="line">pooled4=maxpool4(conv_padded)</span><br><span class="line">pooled4</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">24.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>和预期的一样，只有一个像素。</p>
+<blockquote>
+<p>我可以执行其他的操作吗？</p>
+</blockquote>
+<p>当然，除了最大池化之外，平均池化也相当常见。 顾名思义，它将输出每个块的平均像素值。 在 PyTorch 中，我们有 F.avg_pool2d() 和 nn.AvgPool2d。</p>
+<blockquote>
+<p>我可以使用不同的步幅吗？</p>
+</blockquote>
+<p>当然可以！ 在这种情况下，区域之间将存在重叠，而不是干净地分割成块。 因此，它看起来像一个常规的卷积核，但操作已经定义（例如，最大值或平均值）。 让我们看一个简单的例子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">F.max_pool2d(conv_padded,kernel_size=<span class="number">3</span>,stride=<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">tensor([[[[<span class="number">24.</span>, <span class="number">24.</span>, <span class="number">23.</span>, <span class="number">23.</span>],</span><br><span class="line">          [<span class="number">24.</span>, <span class="number">24.</span>, <span class="number">23.</span>, <span class="number">23.</span>],</span><br><span class="line">          [<span class="number">24.</span>, <span class="number">24.</span>, <span class="number">13.</span>, <span class="number">13.</span>],</span><br><span class="line">          [<span class="number">13.</span>, <span class="number">13.</span>, <span class="number">13.</span>, <span class="number">13.</span>]]]])</span><br></pre></td></tr></table></figure>
+
+<p>大小为三乘三的最大池化内核将在图像上移动（就像卷积内核一样）并计算其经过的每个区域的最大值。</p>
+<h2 id="扁平化"><a href="#扁平化" class="headerlink" title="扁平化"></a>扁平化</h2><p>我们已经看过这个了！ 它只是展平张量，保留第一个维度，以便我们保留数据点的数量，同时折叠所有其他维度。 它有一个模块版本，nn.Flatten：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">flattened=nn.Flatten()(pooled)</span><br><span class="line">flattened</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">22.</span>, <span class="number">23.</span>, <span class="number">11.</span>, <span class="number">24.</span>,  <span class="number">7.</span>,  <span class="number">1.</span>, <span class="number">13.</span>, <span class="number">13.</span>, <span class="number">13.</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>它没有函数 F 的版本，但不其实需要，因为我们可以使用 view() 完成同样的事情：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pooled.view(<span class="number">1</span>,-<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">22.</span>, <span class="number">23.</span>, <span class="number">11.</span>, <span class="number">24.</span>,  <span class="number">7.</span>,  <span class="number">1.</span>, <span class="number">13.</span>, <span class="number">13.</span>, <span class="number">13.</span>]])</span><br></pre></td></tr></table></figure>
+
+<h2 id="维度"><a href="#维度" class="headerlink" title="维度"></a>维度</h2><p>因为我们正在处理图像，所以我们在二维上执行了卷积、填充和池化。 但其中一些也有一维和三维版本：</p>
+<ul>
+<li>nn.Conv1d和F.conv1d();nn.Conv3d和F.conv3d()</li>
+<li>nn.ConstandPad1d和nn.ConstandPad3d</li>
+<li>nn.ReplicationPad1d和nn.ReplicationPad3d</li>
+<li>nn.ReflectionPad1d</li>
+<li>nn.MaxPool1d和F.max_pool1d();nn.MaxPool3d和F.max_pool3d()</li>
+<li>nn.AvgPool1d和F.avg_pool1d();nn.AvgPool3d和F.avg_pool3d()</li>
+</ul>
+<p>在本书中我们不会冒险进入第三维，但稍后我们会回到一维操作。</p>
+<blockquote>
+<p>“彩色图像不是三维的吗，因为它们有三个通道”</p>
+</blockquote>
+<p>嗯，是的，但我们仍然会对它们应用二维卷积。 我们将在下一章中使用三通道图像详细介绍示例。</p>
+<h2 id="典型架构"><a href="#典型架构" class="headerlink" title="典型架构"></a>典型架构</h2><p>典型的架构使用一系列一个或多个典型的卷积块，每个块由三个操作组成：</p>
+<ul>
+<li>卷积</li>
+<li>激活函数</li>
+<li>池化</li>
+</ul>
+<p>当图像经过这些操作时，它们的尺寸会缩小。 例如，在三个这样的块之后（假设用于池化的内核大小为两个），图像将减小到其原始尺寸的 1&#x2F;8 或更小（因此像素总数的 1&#x2F;64）。 不过，每个块产生的通道&#x2F;过滤器的数量通常会随着块的增加而增加。</p>
+<p>在块序列之后，图像被展平化：在这个阶段，通过将展平张量中的每个值单独视为一个特征，不会发生信息丢失。</p>
+<p>一旦特征与像素分离，它就变成了一个相当标准的问题，就像我们在本书中处理的问题一样：特征提供一个或多个隐藏层，输出层生成用于分类的logits。</p>
+<blockquote>
+<p>如果你想一下，那些典型的卷积块的作用是类似于预处理图像并将其转换为特征。 我们将网络的这一部分称为特征器（生成特征的部分）。<br>分类本身是由熟悉且众所周知的隐藏层和输出层处理的。在迁移学习中，这一点将变得更加清晰。</p>
+</blockquote>
+<h3 id="LeNet-5"><a href="#LeNet-5" class="headerlink" title="LeNet-5"></a>LeNet-5</h3><p>LeNet-5 是 Yann LeCun 于 1998 年开发的七层卷积神经网络，用于识别 28x28 像素图像（著名的 MNIST 数据集）中的手写数字！ 那就是一切开始的时候（有点）。 1989 年，LeCun 本人使用反向传播（链式梯度下降，还记得吗？）来学习卷积过滤器，正如我们上面讨论的那样，而不是费力地手动开发它们。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fd29d462d-422c-4f66-bd0c-e3b9bc827f2c%2FUntitled.png?table=block&id=60833eb6-486e-43cf-ad7e-a7deb1618ae1&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>你看到什么熟悉的东西了吗？ 典型的卷积块已经存在（在某种程度上）：卷积（C 层）、激活函数（未显示）和子采样（S 层）。 但也存在一些差异：</p>
+<ul>
+<li>当时，子采样比今天的最大池要复杂，但一般的想法仍然成立。</li>
+<li>激活函数（当时是 sigmoid）是在子采样之后应用的，而不是像现在一样在子采样之前应用。</li>
+<li>F6 和输出层通过称为高斯连接的方式连接，这比当今使用的典型激活函数更复杂。</li>
+</ul>
+<p>让 LeNet-5 适应今天的标准，可以这样实现：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">lenet=nn.Sequential()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 特征化</span></span><br><span class="line"><span class="comment"># Block1：1@28*28-&gt;6@28*28-&gt;6@14*14</span></span><br><span class="line">lenet.add_module(<span class="string">&#x27;C1&#x27;</span>,nn.Conv2d(</span><br><span class="line">    in_channels=<span class="number">1</span>,out_channels=<span class="number">6</span>,kernel_size=<span class="number">5</span>,stride=<span class="number">1</span>,padding=<span class="number">2</span></span><br><span class="line">))</span><br><span class="line">lenet.add_module(<span class="string">&#x27;fun1&#x27;</span>,nn.ReLU())</span><br><span class="line">lenet.add_module(<span class="string">&#x27;S2&#x27;</span>,nn.MaxPool2d(kernel_size=<span class="number">2</span>))</span><br><span class="line"></span><br><span class="line"><span class="comment"># Block2: 6@14*14-&gt;16@10*10-&gt;16@5*5</span></span><br><span class="line">lenet.add_module(<span class="string">&#x27;C3&#x27;</span>,nn.Conv2d(</span><br><span class="line">    in_channels=<span class="number">6</span>,out_channels=<span class="number">16</span>,kernel_size=<span class="number">5</span></span><br><span class="line">))</span><br><span class="line">lenet.add_module(<span class="string">&#x27;fun2&#x27;</span>,nn.ReLU())</span><br><span class="line">lenet.add_module(<span class="string">&#x27;S4&#x27;</span>,nn.MaxPool2d(kernel_size=<span class="number">2</span>))</span><br><span class="line"></span><br><span class="line"><span class="comment"># Block3: 16@5*5-&gt;120@1*1</span></span><br><span class="line">lenet.add_module(<span class="string">&#x27;C5&#x27;</span>,nn.Conv2d(</span><br><span class="line">    in_channels=<span class="number">16</span>,out_channels=<span class="number">120</span>,kernel_size=<span class="number">5</span></span><br><span class="line">))</span><br><span class="line">lenet.add_module(<span class="string">&#x27;fun2&#x27;</span>,nn.ReLU())</span><br><span class="line"></span><br><span class="line"><span class="comment"># 扁平化</span></span><br><span class="line">lenet.add_module(<span class="string">&#x27;flatten&#x27;</span>,nn.Flatten())</span><br><span class="line"></span><br><span class="line"><span class="comment"># 分类</span></span><br><span class="line"><span class="comment"># 隐藏层</span></span><br><span class="line"></span><br><span class="line">lenet.add_module(<span class="string">&#x27;F6&#x27;</span>,nn.Linear(in_features=<span class="number">120</span>,out_features=<span class="number">84</span>))</span><br><span class="line">lenet.add_module(<span class="string">&#x27;fun3&#x27;</span>,nn.ReLU())</span><br><span class="line"></span><br><span class="line"><span class="comment"># 输出层</span></span><br><span class="line">lenet.add_module(<span class="string">&#x27;OUTPUT&#x27;</span>,nn.Linear(in_features=<span class="number">84</span>,out_features=<span class="number">10</span>))</span><br></pre></td></tr></table></figure>
+
+<p>LeNet-5 使用了三个卷积块，尽管最后一个没有最大池化，因为卷积已经产生了单个像素。 关于通道数，它们随着图像尺寸的减小而增加：</p>
+<ul>
+<li>输入图像：单通道28x28像素</li>
+<li>第一个块：产生六通道 14x14 像素</li>
+<li>第二块：产生 16 通道 5x5 像素</li>
+<li>第三块：产生 120 通道 (1x1)单像素</li>
+</ul>
+<p>然后，这 120 个值（或特征）被扁平化并馈送到具有 84 个单元的典型隐藏层。 显然，最后一步是输出层，它产生十个用于数字分类的logits（从0到9，有十个类别）。</p>
+<blockquote>
+<p>“等等，我们还没有看到任何这些多类分类问题！”</p>
+</blockquote>
+<p>你说得对，是时候了。但我们仍然没有使用MNIST</p>
+<h2 id="一个多类型的分类问题"><a href="#一个多类型的分类问题" class="headerlink" title="一个多类型的分类问题"></a>一个多类型的分类问题</h2><p>如果有两个以上的类，则认为这个问题是一个多类的分类问题。所以，让我们尽可能保持简单，建立一个模型来将图像分为三类。</p>
+<h3 id="数据生成"><a href="#数据生成" class="headerlink" title="数据生成"></a>数据生成</h3><p>我们的图像将会有一条对角线或一条平行线，但这一次我们将区分一条向右倾斜的对角线、一条向左倾斜的对角线和一条平行线（不管它是水平的还是垂直的）。我们可以这样总结这些标签(y)：</p>
+<table>
+<thead>
+<tr>
+<th>线</th>
+<th>标签&#x2F;分类索引</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>平行线（水平或垂直）</td>
+<td>0</td>
+</tr>
+<tr>
+<td>对角线，向右倾斜</td>
+<td>1</td>
+</tr>
+<tr>
+<td>对角线，向左倾斜</td>
+<td>2</td>
+</tr>
+</tbody></table>
+<p>同时，然我们生成更多的大的图像：一千个图像，每个的尺寸都是10*10像素：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">images, labels = generate_dataset(img_size=<span class="number">10</span>,</span><br><span class="line">n_images=<span class="number">1000</span>, binary=<span class="literal">False</span>, seed=<span class="number">17</span>)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> plots.chapter4 <span class="keyword">import</span> *</span><br><span class="line">fig = plot_images(images, labels, n_plot=<span class="number">30</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F487e5d66-699b-49bd-8978-81fd0e617cfa%2FUntitled.png?table=block&id=89d4a8fa-42a0-4b3f-8f7b-b25c29ef8450&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1050&userId=&cache=v2"></p>
+<p>和之前介绍过的一样，数据集中的图片为PyTorch的NCHW格式。</p>
+<h3 id="数据准备"><a href="#数据准备" class="headerlink" title="数据准备"></a>数据准备</h3><p>如果没有一项更改，数据准备步骤将与我们在第 4 章中使用的步骤相同：这次我们不会执行数据增强。</p>
+<blockquote>
+<p>为什么不呢？</p>
+</blockquote>
+<p>在我们的特定问题中，翻转图像有可能破坏标签。 如果我们有一个图像包含向右倾斜的对角线（因此标记为类索引#1），然后我们翻转它，那么对角线最终将向左倾斜。 但数据增强不会更改标签，因此结果将是带有错误标签的图像（类索引#1，即使它包含向左倾斜的对角线）。</p>
+<blockquote>
+<p>数据增强可能是有用的，但它不应该产生与标签不一致的图像。</p>
+</blockquote>
+<p>也就是说，我们只是通过使用 Normalize() 变换来保持最小-最大缩放。 其余部分保持不变：分割、数据集、采样器和数据加载器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">TransformedTensorDataset</span>(<span class="title class_ inherited__">Dataset</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self,x,y,transform=<span class="literal">None</span></span>):</span><br><span class="line">        self.x=x </span><br><span class="line">        self.y=y </span><br><span class="line">        self.transform=transform</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__getitem__</span>(<span class="params">self, index</span>):</span><br><span class="line">        x=self.x[index]</span><br><span class="line">        <span class="keyword">if</span> self.transform:</span><br><span class="line">            x=self.transform(x)</span><br><span class="line">        <span class="keyword">return</span> x,self.y[index]</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__len__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">len</span>(self.x)</span><br></pre></td></tr></table></figure>
+
+<p>数据准备</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Builds tensors from numpy arrays BEFORE split</span></span><br><span class="line"><span class="comment"># Modifies the scale of pixel values from [0, 255] to [0, 1]</span></span><br><span class="line">x_tensor = torch.as_tensor(images / <span class="number">255</span>).<span class="built_in">float</span>()</span><br><span class="line">y_tensor = torch.as_tensor(labels).long()</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses index_splitter to generate indices for training and</span></span><br><span class="line"><span class="comment"># validation sets</span></span><br><span class="line">train_idx, val_idx = index_splitter(<span class="built_in">len</span>(x_tensor), [<span class="number">80</span>, <span class="number">20</span>])</span><br><span class="line"><span class="comment"># Uses indices to perform the split</span></span><br><span class="line">x_train_tensor = x_tensor[train_idx]</span><br><span class="line">y_train_tensor = y_tensor[train_idx]</span><br><span class="line">x_val_tensor = x_tensor[val_idx]</span><br><span class="line">y_val_tensor = y_tensor[val_idx]</span><br><span class="line"></span><br><span class="line"><span class="comment"># We&#x27;re not doing any data augmentation now</span></span><br><span class="line">train_composer = Compose([Normalize(mean=(<span class="number">.5</span>,), std=(<span class="number">.5</span>,))])</span><br><span class="line">val_composer = Compose([Normalize(mean=(<span class="number">.5</span>,), std=(<span class="number">.5</span>,))])</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses custom dataset to apply composed transforms to each set</span></span><br><span class="line">train_dataset = TransformedTensorDataset(x_train_tensor, y_train_tensor, transform=train_composer)</span><br><span class="line">val_dataset = TransformedTensorDataset(x_val_tensor, y_val_tensor, transform=val_composer)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds a weighted random sampler to handle imbalanced classes</span></span><br><span class="line">sampler = make_balanced_sampler(y_train_tensor)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses sampler in the training set to get a balanced data loader</span></span><br><span class="line">train_loader = DataLoader(dataset=train_dataset, batch_size=<span class="number">16</span>, sampler=sampler)</span><br><span class="line">val_loader = DataLoader(dataset=val_dataset, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>在定义一个模型来对我们的图像进行分类前，我们先来讨论另外一个问题：损失函数。</p>
+<h3 id="损失"><a href="#损失" class="headerlink" title="损失"></a>损失</h3><p>新的问题，新的损失函数。 由于我们现在采用多类分类，因此我们需要使用不同的损失函数。 再一次，这一切都始于我们“最喜欢的”主题：logits。</p>
+<h3 id="logits"><a href="#logits" class="headerlink" title="logits"></a>logits</h3><p>在二元分类问题中，模型将为每个数据点生成一个 Logit，并且仅生成一个 Logit。 这是有道理的，因为二元分类是为了回答一个简单的问题：“给定的数据点是否属于正类？”</p>
+<p>logit 输出表示对上述问题回答“是”的对数优势比（还记得第 3 章中的内容吗？）。 “否”答案的对数优势比正好相反。 无需提出任何其他问题即可做出决定。 我们使用 sigmoid 函数将逻辑映射到概率。 这是一个简单的世界:-)</p>
+<p>但多类别分类更为复杂：我们需要提出更多问题；也就是说，我们需要获得每个可能类别的对数优势比。 换句话说，有多少个类，我们就需要多少个logits。</p>
+<blockquote>
+<p>但是一个sigmoid函数只能处理一个logit。我猜我们需要其他的方法来获得概率，对吗？</p>
+</blockquote>
+<p>绝对正确！我们要找的这个函数名为softmax。</p>
+<h3 id="Softmax"><a href="#Softmax" class="headerlink" title="Softmax"></a>Softmax</h3><p>softmax 函数针对每个类别返回给定类别对优势比总和的贡献。 优势比较高的类别将具有最大的贡献，因此概率也最高。</p>
+<blockquote>
+<p>由于softmax是使用优势比而不是对数优势比（对数）来计算的，所以我们需要对对数进行指数化！</p>
+</blockquote>
+<p>$$<br>z&#x3D;logit(p)&#x3D;log odds ratio(p)&#x3D;log(\frac{p}{1-p}) \<br>e^z&#x3D;e^{logit(p)}&#x3D;odds ratio(p)&#x3D;(\frac{p}{1-p})<br>$$</p>
+<p>Softmax的公式非常简单</p>
+<p>$$<br>softmax(z_i)&#x3D;\frac{e^{z_i}}{\Sigma^{N_c-1}_{c&#x3D;0}e^{z_c}}<br>$$</p>
+<p>在上面的等式中，C 代表类别的数量，i 对应于特定类的索引。 在我们的示例中，我们有三个类，因此我们的模型需要输出三个 logits (z0, z1, z2)。 将 softmax 应用于这些 logits，我们将得到以下结果：</p>
+<p>$$<br>softmax(z)&#x3D;\begin{bmatrix}<br>\frac{e^{z0}}{e^{z0}+e^{z1}+e^{z2}},<br>\frac{e^{z1}}{e^{z0}+e^{z1}+e^{z2}},<br>\frac{e^{z2}}{e^{z0}+e^{z1}+e^{z2}}<br> \end{bmatrix}<br>$$</p>
+<p>很简单，是吗？让我们看看代码。假设我们的模型输出了下面这个包含三个 logits 的张量：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">logits=torch.tensor([<span class="number">1.3863</span>,<span class="number">0.0000</span>,-<span class="number">0.6931</span>])</span><br></pre></td></tr></table></figure>
+
+<p>我们将 logits 进行指数运算，以获得相应的比率：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">odds_ratios=torch.exp(logits)</span><br><span class="line">odds_ratios</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">4.0000</span>, <span class="number">1.0000</span>, <span class="number">0.5000</span>])</span><br></pre></td></tr></table></figure>
+
+<p>得到的张量告诉我们，第一类比其他两类有更好的赔率，第二类比第三类有更好的赔率。 因此，我们将这些赔率相加，然后计算每个类别对总和的贡献：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">softmaxed=odds_ratios/odds_ratios.<span class="built_in">sum</span>()</span><br><span class="line">softmaxed</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.7273</span>, <span class="number">0.1818</span>, <span class="number">0.0909</span>])</span><br></pre></td></tr></table></figure>
+
+<p>瞧！ 我们的logits是 softmax 的：概率与优势比成正比。 该数据点很可能属于第一类，因为它的概率为 72.73%。</p>
+<p>但当然，绝对不需要手动计算。 PyTorch 提供了标准的实现：函数式（F.softmax()）和模块式（nn.Softmax）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">nn.Softmax(dim=-<span class="number">1</span>)(logits),F.softmax(logits,dim=-<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([<span class="number">0.7273</span>, <span class="number">0.1818</span>, <span class="number">0.0909</span>]), tensor([<span class="number">0.7273</span>, <span class="number">0.1818</span>, <span class="number">0.0909</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>在这两种情况下，它都会要求您提供 softmax 函数应应用于哪个维度。 一般来说，我们的模型将生成具有形状（数据点数量、类数量）的 logits，因此应用 softmax 的正确维度是最后一个维度（dim&#x3D;-1）。</p>
+<h3 id="logSoftmax"><a href="#logSoftmax" class="headerlink" title="logSoftmax"></a>logSoftmax</h3><p>logsoftmax 函数返回上面的 softmax 函数的对数。 但是，PyTorch 提供了开箱即用的 F.log_softmax() 和 nn.LogSoftmax，无需手动取对数。</p>
+<p>这些函数速度很快，并且具有更好的数值特性。 但是，我想您此时的主要问题是：</p>
+<blockquote>
+<p>“为什么我需要获取 softmax 的对数？”</p>
+</blockquote>
+<p>简单直接的原因是损失函数期望对数概率作为输入。</p>
+<h3 id="负对数似然损失"><a href="#负对数似然损失" class="headerlink" title="负对数似然损失"></a>负对数似然损失</h3><p>由于 softmax 返回概率，而 logsoftmax 返回对数概率。 就是计算负对数似然损失（ nn.NLLLoss()）的输入。 这种损失只是处理多个分类的二元交叉熵损失的扩展。</p>
+<p>以下是计算二元交叉商的公式：</p>
+<p>$$<br>BCE(y)&#x3D;-\frac{1}{N_{pos}+N_{neg}}\begin{bmatrix}\sum_{i&#x3D;1}^{N_{pos}}log(P(y_i&#x3D;1)+\sum_{i&#x3D;1}^{N_{neg}}log(1-P(y_i&#x3D;1))\end{bmatrix}<br>$$</p>
+<p>看到在求和计算哪里的指数概率了吗？在外面的例子中，有三个分类，所以标签变量可以是 0,1 或者 2。所以，损失函数的公式如下</p>
+<p>$$<br>NLLLoss(y)&#x3D;-\frac{1}{N_0+N_1+N_2}\begin{bmatrix}\sum_{i&#x3D;1}^{N_0}log(P(y_i&#x3D;0))+\sum_{i&#x3D;1}^{N_1}log(1-P(y_i&#x3D;1))+\sum_{i&#x3D;1}^{N_2}log(1-P(y_i&#x3D;2))\end{bmatrix}<br>$$</p>
+<p>以第一类 (y&#x3D;0) 为例。 对于属于此类的每个数据点（有 N0 个），我们取该点和类的预测概率的对数 (log(P(yi&#x3D;0))) 并将它们全部相加。 接下来，我们对其他两个类重复该过程，将所有三个结果相加，然后除以数据点总数。</p>
+<blockquote>
+<p>损失仅考虑真实类别的预测概率。</p>
+</blockquote>
+<p>如果一个数据点被标记为属于类索引二，则损失将仅考虑分配给类索引二的概率。 其他概率将被完全忽略。</p>
+<p>对于总数为 C 个的类别，其公式如下</p>
+<p>$$<br>NLLLoss(y)&#x3D;-\frac{1}{N_0+…+N_{C-1}}\begin{bmatrix}\sum_{c&#x3D;0}^{C-1}\sum_{i&#x3D;1}^{N_c}log(P(y_i&#x3D;C))\end{bmatrix}<br>$$</p>
+<p>由于对数概率是通过应用 logsoftmax 获得的，因此这种损失只不过是查找与真实类别相对应的输入并将它们相加。 让我们在代码中看看：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">log_probs=F.log_softmax(logits,dim=-<span class="number">1</span>)</span><br><span class="line">log_probs</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([-<span class="number">0.3185</span>, -<span class="number">1.7048</span>, -<span class="number">2.3979</span>])</span><br></pre></td></tr></table></figure>
+
+<p>这些是我们使用 logsoftmax 针对单个数据点计算的每个类别的对数概率。 现在，假设它的标签是2：那么相应的损失是多少？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">label=torch.tensor([<span class="number">2</span>])</span><br><span class="line">F.nll_loss(log_probs.view(-<span class="number">1</span>,<span class="number">3</span>),label)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">2.3979</span>)</span><br></pre></td></tr></table></figure>
+
+<p>它是与真实标签的类别索引（2）对应的对数概率（-2.3979）的负数。</p>
+<p>您可能已经注意到，我在上面的代码片段中使用了损失的函数版本：F.nll_loss()。 但是，正如我们在第 3 章中处理二进制交叉熵损失一样，我们可能会使用模块版本：nn.NLLLoss()。</p>
+<p>就像以前一样，这个损失函数是一个高阶函数，并且这个函数需要三个可选参数（其他参数已弃用，您可以安全地忽略它们）：</p>
+<ul>
+<li>reduction: 它要么是 mean，要么是 sum，或者 是 none。 默认值为 mean，对应于上面的公式 。 正如预期的那样，sum 将返回错误的总和，而不是平均值。 最后一个选项 none 对应于未简化的形式； 也就是说，它返回完整的错误数组。</li>
+<li>weight:它需要一个长度为C的张量； 也就是说，包含与类别一样多的权重。</li>
+<li>ignore_index: 它需要一个整数，对应于计算损失时应忽略的一个（且唯一一个）类索引。 它可用于屏蔽与分类任务不相关的特定标签。</li>
+</ul>
+<p>让我们使用上面的参数来看一些简单的例子。 首先，我们需要生成一些示例 logits（不过，我们将继续使用三个类）和相应的对数概率：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">11</span>)</span><br><span class="line">dummy_logits=torch.randn((<span class="number">5</span>,<span class="number">3</span>))</span><br><span class="line">dummy_labels=torch.tensor([<span class="number">0</span>,<span class="number">0</span>,<span class="number">1</span>,<span class="number">2</span>,<span class="number">1</span>])</span><br><span class="line">dummy_log_probs=F.log_softmax(dummy_logits,dim=-<span class="number">1</span>)</span><br><span class="line">dummy_log_probs</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">tensor([[-<span class="number">1.5229</span>, -<span class="number">0.3146</span>, -<span class="number">2.9600</span>],</span><br><span class="line">        [-<span class="number">1.7934</span>, -<span class="number">1.0044</span>, -<span class="number">0.7607</span>],</span><br><span class="line">        [-<span class="number">1.2513</span>, -<span class="number">1.0136</span>, -<span class="number">1.0471</span>],</span><br><span class="line">        [-<span class="number">2.6799</span>, -<span class="number">0.2219</span>, -<span class="number">2.0367</span>],</span><br><span class="line">        [-<span class="number">1.0728</span>, -<span class="number">1.9098</span>, -<span class="number">0.6737</span>]])</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>您可以手动选择将在损失计算中实际使用的对数概率吗？</p>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">relevant_log_probs=torch.tensor([-<span class="number">1.5229</span>, -<span class="number">1.7934</span>, -<span class="number">1.0136</span>,-<span class="number">2.0367</span>, -<span class="number">1.9098</span>])</span><br><span class="line">-relevant_log_probs.mean()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">1.6553</span>)</span><br></pre></td></tr></table></figure>
+
+<p>现在，让我们使用 nn.NLLLoss() 创建实际的损失函数，然后使用预测和标签来检查相关的对数概率是否正确：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn=nn.NLLLoss()</span><br><span class="line">loss_fn(dummy_log_probs,dummy_labels)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">1.6553</span>)</span><br></pre></td></tr></table></figure>
+
+<p>没错，确实如此！ 如果我们想要平衡数据集，给标签（y&#x3D;2）的数据点加倍权重，该怎么办？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn=nn.NLLLoss(weight=torch.tensor([<span class="number">1.</span>,<span class="number">1.</span>,<span class="number">2.</span>]))</span><br><span class="line">loss_fn(dummy_log_probs,dummy_labels)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">1.7188</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果我们想简单地忽略带有标签 (y&#x3D;2) 的数据点怎么办？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn = nn.NLLLoss(ignore_index=<span class="number">2</span>)</span><br><span class="line">loss_fn(dummy_log_probs, dummy_labels)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">1.5599</span>)</span><br></pre></td></tr></table></figure>
+
+<p>而且，还有另一个可用于多类分类的损失函数。 而且，再次强调，知道何时使用其中一种非常重要，这样您就不会得到模型和损失函数不一致的组合。</p>
+<h3 id="交叉熵损失"><a href="#交叉熵损失" class="headerlink" title="交叉熵损失"></a>交叉熵损失</h3><p>前一个损失函数将对数概率作为参数（显然，还包括标签）。 猜猜这个函数需要什么？ 当然是logits！ 这是 nn.BCEWithLogitsLoss() 的多类别版本。</p>
+<blockquote>
+<p>“从实际角度来说，这意味着什么？”</p>
+</blockquote>
+<p>这意味着在使用此损失函数时，不应添加 logsoftmax 作为模型的最后一层。 该损失函数将 logsoftmax 层和负对数似然损失合二为一。</p>
+<blockquote>
+<p>重要提示：我怎么强调都不为过：您必须使用模型和损失函数的正确组合！<br><strong>选项 1</strong>： nn.LogSoftmax 作为最后一层，这意味着您的模型正在与 nn.NLLLoss() 函数结合生成对数概率。<br><strong>选项 2</strong>：最后一层没有 logsoftmax，这意味着您的模型正在与 nn.CrossEntropyLoss() 函数结合生成 logits。<br>混合 nn.LogSoftmax 和 nn.CrossEntropyLoss() 是错误的。</p>
+</blockquote>
+<p>现在参数之间的区别已经很清楚了，让我们仔细看看 nn.CrossEntropyLoss() 函数。 它是一个高阶函数，它采用与 nn.NLLLoss() 相同的三个可选参数：</p>
+<ul>
+<li>reduction：接收 mean,sum 和 none 三个参数，确实是 mean。</li>
+<li>weight：它接收 C 长度的张量。它包含了与类别数量相同的权重值。</li>
+<li>ignore_index：这是一个整数，代笔需要忽略的类别的索引。</li>
+</ul>
+<p>让我们看一个例子代码：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">11</span>)</span><br><span class="line">dummy_logits=torch.randn((<span class="number">5</span>,<span class="number">3</span>))</span><br><span class="line">dummy_labels=torch.tensor([<span class="number">0</span>,<span class="number">0</span>,<span class="number">1</span>,<span class="number">2</span>,<span class="number">1</span>])</span><br><span class="line"></span><br><span class="line">loss_fn=nn.CrossEntropyLoss()</span><br><span class="line">loss_fn(dummy_logits,dummy_labels)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">1.6553</span>)</span><br></pre></td></tr></table></figure>
+
+<p>没有任何 logsoftmax，但产生的损失与预期相同。</p>
+<h3 id="分类损失对比"><a href="#分类损失对比" class="headerlink" title="分类损失对比"></a>分类损失对比</h3><p>老实说，我总觉得这整件事有点令人困惑，尤其是对于第一次学习它的人来说。<br>哪些损失函数以 logits 作为输入？ 我是否应该添加（log）softmax 层？ 我可以使用权重参数来处理不平衡的数据集吗？ 太多问题了，对吧？<br>因此，这里有一个表格可以帮助您了解二元和多类分类问题的损失函数的概况：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>BCELoss</th>
+<th>BCE WithLogitsLoss</th>
+<th>NLL Loss</th>
+<th>Cross-Entropy Loss</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>分类</td>
+<td>二元</td>
+<td>二元</td>
+<td>多类型</td>
+<td>多类型</td>
+</tr>
+<tr>
+<td>输入（每个数据点）</td>
+<td>概率</td>
+<td>logit</td>
+<td>一系列对数概率</td>
+<td>一系列 logit</td>
+</tr>
+<tr>
+<td>标签（每个数据点）</td>
+<td>float(0.0或1.0)</td>
+<td>float(0.0或1.0)</td>
+<td>long(类型的索引)</td>
+<td>long(类型的索引)</td>
+</tr>
+<tr>
+<td>模型的最后一层</td>
+<td>Sigmoid</td>
+<td>-</td>
+<td>LogSoftmax</td>
+<td>-</td>
+</tr>
+<tr>
+<td>权重参数</td>
+<td>非类型权重</td>
+<td>非类型权重</td>
+<td>类型权重</td>
+<td>类型权重</td>
+</tr>
+<tr>
+<td>pos_weight 参数</td>
+<td>n&#x2F;a</td>
+<td>权重化的损失</td>
+<td>n&#x2F;a</td>
+<td>n&#x2F;a</td>
+</tr>
+</tbody></table>
+<h3 id="模型配置"><a href="#模型配置" class="headerlink" title="模型配置"></a>模型配置</h3><p>让我们创建第一个真正的卷积神经网络。我们可以使用标准的额卷积块：卷积层、激活函数、池化层。我们的图像非常小，所以我们只需要一个块。</p>
+<p>我们仍然需要决定我们的卷积层将要输出的通道有多少个。通常，通道的数量随着卷积块的数量而增长。为了简单起见（方便后续的可视化），我们保持一个通道。</p>
+<p>我们还需要决定内核的尺寸（也就是我们一开始看到的那个灰色图像的大小）。让我们将内核的大小设置为 3*3，这将在每个维度上将图像的尺寸减少两个像素（我们不会使用填充）。</p>
+<p>我们的特征器将使用卷积将图像编码为特征，代码如下所示：</p>
+<p>模型配置-特征器</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line">model_nn1=nn.Sequential()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 特征器</span></span><br><span class="line"><span class="comment"># 块 1：1@10*10-&gt;n_channels@8**-&gt;n_channels@4*4</span></span><br><span class="line">n_channels=<span class="number">1</span></span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;conv1&#x27;</span>,nn.Conv2d(</span><br><span class="line">    in_channels=<span class="number">1</span>,out_channels=n_channels,kernel_size=<span class="number">3</span></span><br><span class="line">))</span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;relu1&#x27;</span>,nn.ReLU())</span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;maxp1&#x27;</span>,nn.MaxPool2d(kernel_size=<span class="number">2</span>))</span><br><span class="line"><span class="comment"># 扁平化：nchannels _ 4 _4</span></span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;flatten&#x27;</span>,nn.Flatten())</span><br></pre></td></tr></table></figure>
+
+<p>我将通道数保留为变量，因此如果您愿意，可以尝试不同的值。<br>让我们看看输入图像（单通道，大小为 10x10 像素 - 1@10x10）会发生什么情况：</p>
+<ul>
+<li>图像与核进行卷积，得到的图像有一个通道，大小为8x8 像素(1@8x8)。</li>
+<li>ReLU 激活函数应用于生成的图像。</li>
+<li>“激活的”图像在内核大小为 2 的情况下进行最大池化操作，因此它被分为 16 个大小为 2×2 的块，从而生成一个具有 1 个通道的图像，但大小仅为 4x4 像素（1 @4x4）。</li>
+<li>这16 个值可以被视为特征，并被展平为具有16 个元素的张量。</li>
+</ul>
+<p>我们模型的下一部分，即分类器部分，使用这些特征来提供一个具有单个隐藏层的简单神经网络（如果单独考虑的话）：</p>
+<p>模型配置-分类器</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 分类</span></span><br><span class="line"><span class="comment"># 隐藏层</span></span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;fc1&#x27;</span>,</span><br><span class="line">                     nn.Linear(in_features=n_channels*<span class="number">4</span>*<span class="number">4</span>,out_features=<span class="number">10</span>))</span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;relu2&#x27;</span>,nn.ReLU())</span><br><span class="line"><span class="comment"># 输出层</span></span><br><span class="line">model_nn1.add_module(<span class="string">&#x27;fc2&#x27;</span>,nn.Linear(in_features=<span class="number">10</span>,out_features=<span class="number">3</span>))</span><br></pre></td></tr></table></figure>
+
+<p>看到了吗？ 有一个隐藏层将 16 个特征作为输入，并将它们映射到将由 ReLU“激活”的 10 维空间中。<br>然后，输出层产生十个激活值的三个不同的线性组合，每个组合对应于不同的类别。 下图描绘了模型的后半部分，应该会更清楚。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F536bf334-e76e-4510-9fc4-5f5b3f94b63f%2FUntitled.png?table=block&id=ece7e9ae-d3a7-45ed-a9f2-09e27abfe40a&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1580&userId=&cache=v2"></p>
+<p>输出层中的三个单元产生三个 Logit，每个类别一个（C0、C1 和 C2）。 我们可以在模型中添加一个 nn.LogSoftmax 层，它会将三个 logits 转换为对数概率。</p>
+<p>由于我们的模型生成 logits，因此我们必须使用 nn.CrossEntropyLoss() 函数：</p>
+<p>模型配置-损失函数和优化器</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">lr=<span class="number">0.1</span></span><br><span class="line">multi_loss_fn=nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_cnn1=optim.SGD(model_nn1.parameters(),lr=lr)</span><br></pre></td></tr></table></figure>
+
+<p>然后我们像往常一样创建一个具有给定学习率 (0.1) 的优化器 (SGD)。 无聊，对吧？ 不用担心; 我们最终将在下一章中更改石头剪刀布分类问题中的优化器。</p>
+<h3 id="模型训练"><a href="#模型训练" class="headerlink" title="模型训练"></a>模型训练</h3><p>这部分非常简单。 首先，我们实例化我们的类并设置加载器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1=StepByStep(model_nn1,multi_loss_fn,optimizer_cnn1)</span><br><span class="line">sbs_cnn1.set_loaders(train_loader,val_loader)</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们训练 20 个迭代，然后看下损失的变化情况：</p>
+<p>模型训练</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1.train(<span class="number">20</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig=sbs_cnn1.plot_losses()</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F1c489a59-a9d3-4400-9428-06d87ce1ae9b%2FUntitled.png?table=block&id=665431de-3ec4-47ae-9cde-1912ec0920c4&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>好吧，似乎在第5个 迭代就达到了最小值。</p>
+<h2 id="可视化过滤器以及更多"><a href="#可视化过滤器以及更多" class="headerlink" title="可视化过滤器以及更多"></a>可视化过滤器以及更多</h2><p>在第 4 章中，我们简要讨论了将权重可视化为像素。 我们将更深入地研究过滤器（权重）的可视化，以及模型每个层生成的转换图像。</p>
+<p>首先，让我们向给工具带添加另一种方法！</p>
+<p>StepByStep 中的方法</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@staticmethod</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_visualize_tensors</span>(<span class="params">axs, x, y=<span class="literal">None</span>, yhat=<span class="literal">None</span>, </span></span><br><span class="line"><span class="params">                       layer_name=<span class="string">&#x27;&#x27;</span>, title=<span class="literal">None</span></span>):</span><br><span class="line">    <span class="comment"># The number of images is the number of subplots in a row</span></span><br><span class="line">    n_images = <span class="built_in">len</span>(axs)</span><br><span class="line">    <span class="comment"># Gets max and min values for scaling the grayscale</span></span><br><span class="line">    minv, maxv = np.<span class="built_in">min</span>(x[:n_images]), np.<span class="built_in">max</span>(x[:n_images])</span><br><span class="line">    <span class="comment"># For each image</span></span><br><span class="line">    <span class="keyword">for</span> j, image <span class="keyword">in</span> <span class="built_in">enumerate</span>(x[:n_images]):</span><br><span class="line">        ax = axs[j]</span><br><span class="line">        <span class="comment"># Sets title, labels, and removes ticks</span></span><br><span class="line">        <span class="keyword">if</span> title <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">            ax.set_title(<span class="string">f&#x27;<span class="subst">&#123;title&#125;</span> #<span class="subst">&#123;j&#125;</span>&#x27;</span>, fontsize=<span class="number">12</span>)</span><br><span class="line">        shp = np.atleast_2d(image).shape</span><br><span class="line">        ax.set_ylabel(</span><br><span class="line">            <span class="string">f&#x27;<span class="subst">&#123;layer_name&#125;</span>\n<span class="subst">&#123;shp[<span class="number">0</span>]&#125;</span>x<span class="subst">&#123;shp[<span class="number">1</span>]&#125;</span>&#x27;</span>,</span><br><span class="line">            rotation=<span class="number">0</span>, labelpad=<span class="number">40</span></span><br><span class="line">        )</span><br><span class="line">        xlabel1 = <span class="string">&#x27;&#x27;</span> <span class="keyword">if</span> y <span class="keyword">is</span> <span class="literal">None</span> <span class="keyword">else</span> <span class="string">f&#x27;\nLabel: <span class="subst">&#123;y[j]&#125;</span>&#x27;</span></span><br><span class="line">        xlabel2 = <span class="string">&#x27;&#x27;</span> <span class="keyword">if</span> yhat <span class="keyword">is</span> <span class="literal">None</span> <span class="keyword">else</span> <span class="string">f&#x27;\nPredicted: <span class="subst">&#123;yhat[j]&#125;</span>&#x27;</span></span><br><span class="line">        xlabel = <span class="string">f&#x27;<span class="subst">&#123;xlabel1&#125;</span><span class="subst">&#123;xlabel2&#125;</span>&#x27;</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">len</span>(xlabel):</span><br><span class="line">            ax.set_xlabel(xlabel, fontsize=<span class="number">12</span>)</span><br><span class="line">        ax.set_xticks([])</span><br><span class="line">        ax.set_yticks([])</span><br><span class="line"></span><br><span class="line">        <span class="comment"># Plots weight as an image</span></span><br><span class="line">        ax.imshow(</span><br><span class="line">            np.atleast_2d(image.squeeze()),</span><br><span class="line">            cmap=<span class="string">&#x27;gray&#x27;</span>, </span><br><span class="line">            vmin=minv, </span><br><span class="line">            vmax=maxv</span><br><span class="line">        )</span><br><span class="line">    <span class="keyword">return</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_visualize_tensors&#x27;</span>, _visualize_tensors)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>方法定义上方的 @staticmethod 是什么？</p>
+</blockquote>
+<h3 id="静态方法"><a href="#静态方法" class="headerlink" title="静态方法"></a>静态方法</h3><p>“@”表示位于其下方的方法 _visualize_tensors() 正在由 staticmethod 装饰器函数装饰。</p>
+<blockquote>
+<p>什么是装饰器？</p>
+</blockquote>
+<p>Python 装饰器本身就是一个大话题，涉及面太广，无法在这里解释。 如果您想了解更多信息，请查看 Real Python 的“Python 装饰器入门”。但我会告诉你这个特定（并且有些常见）装饰器的作用。</p>
+<p>@staticmethod 装饰器允许在未实例化的类对象上调用该方法。 就好像我们将一个方法附加到一个类，但该方法不依赖于它所附加的类的实例。</p>
+<p>原因很容易理解：在迄今为止我们为 StepByStep 类创建的所有其他方法中，第一个参数始终是 self。 因此，这些方法可以访问它们所属的类； 更好的是，他们可以访问特定实例及其属性。 还记得Dog 类吗？它的bark() 方法知道 Dog的名字，因为它的第一个参数是代表Dog的实例（自身）。</p>
+<p>静态方法没有 self 参数。 函数的内部工作必须独立于它所属类的实例。 静态方法可以从类本身执行，而不是从其实例之一执行。</p>
+<p>让我用另一个简单的例子来说明这一点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Cat</span>(<span class="title class_ inherited__">object</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self,name</span>):</span><br><span class="line">        self.name=name</span><br><span class="line"><span class="meta">    @staticmethod</span></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">meow</span>():</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">&#x27;Meow&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>meow() 方法完全独立于 Cat 类。 我们甚至不需要创造一个 Cat 的实例！ 这就是我所说的“调用未实例化的类对象”的意思。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Cat.meow()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Meow</span><br></pre></td></tr></table></figure>
+
+<p>看到了吗？ meow() 方法是一个独立的函数，因为它的工作原理与函数类似。 但是，在 Cat 类的上下文中，附加该方法是有意义的，因为从概念上讲，它们是一个整体。</p>
+<p>_visualize_tensors() 方法的大部分内容包括在使用 imshow() 实际绘制图像之前处理标题、标签和轴的刻度，因此它并不是那么有趣。 让我们检查一下它的参数：</p>
+<ul>
+<li>axs：子图数组，对应于 Matplotlib 子图返回的一行子图</li>
+<li>x：一个 Numpy 数组，包含至少与 axs 中的子图一样多的图像&#x2F;过滤器</li>
+<li>y：可选，一个 Numpy 数组，至少包含与 axs 中的子图一样多的标签</li>
+<li>yhat：可选，一个 Numpy 数组，包含至少与 axs 中的子图一样多的预测标签</li>
+<li>layer_name：子图行的标签</li>
+<li>title：每个子图的标题前缀</li>
+</ul>
+<p>我们将从其他（常规）方法调用静态方法来绘制我们感兴趣的图像。让我们从过滤器开始。</p>
+<h3 id="可视化过滤器"><a href="#可视化过滤器" class="headerlink" title="可视化过滤器"></a>可视化过滤器</h3><p>我们可以将相同的原理应用于卷积层学习的过滤器器的权重，使用点表示法访问任何给定层的权重：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">weights_filter=model_nn1.conv1.weight.data.cpu().numpy()</span><br><span class="line">weights_filter.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1</span>, <span class="number">1</span>, <span class="number">3</span>, <span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<p>每个层都有自己的权重属性，它是一个 nn.Parameter。 我们可以直接使用它，但是在将参数转换为 Numpy 之前，我们还必须从计算图中 detach() 参数。 因此，使用权重这个数据属性更容易，因为它只是一个张量，不需要分离。</p>
+<p>二维卷积层的权重（表示过滤器）的形状由 (out_channels, in_channels, kernel_size, kernel_size) 给出。 在我们的例子中，内核大小为 3，并且我们只有一个通道（输入和输出），因此权重的形状为 (1, 1, 3, 3)。</p>
+<p>这就是我们在上一节中开发的静态方法派上用场的时候：我们可以循环遍历模型学习的过滤器（输出通道）来对每个输入通道进行卷积。</p>
+<p>StepByStep 方法</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">visualize_filters</span>(<span class="params">self, layer_name, **kwargs</span>):</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        <span class="comment"># Gets the layer object from the model</span></span><br><span class="line">        layer = self.model</span><br><span class="line">        <span class="keyword">for</span> name <span class="keyword">in</span> layer_name.split(<span class="string">&#x27;.&#x27;</span>):</span><br><span class="line">            layer = <span class="built_in">getattr</span>(layer, name)</span><br><span class="line">        <span class="comment"># We are only looking at filters for 2D convolutions</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">isinstance</span>(layer, nn.Conv2d):</span><br><span class="line">            <span class="comment"># Takes the weight information</span></span><br><span class="line">            weights = layer.weight.data.cpu().numpy()</span><br><span class="line">            <span class="comment"># weights -&gt; (channels_out (filter), channels_in, H, W)</span></span><br><span class="line">            n_filters, n_channels, _, _ = weights.shape</span><br><span class="line"></span><br><span class="line">            <span class="comment"># Builds a figure</span></span><br><span class="line">            size = (<span class="number">2</span> * n_channels + <span class="number">2</span>, <span class="number">2</span> * n_filters)</span><br><span class="line">            fig, axes = plt.subplots(n_filters, n_channels, </span><br><span class="line">                                     figsize=size)</span><br><span class="line">            axes = np.atleast_2d(axes)</span><br><span class="line">            axes = axes.reshape(n_filters, n_channels)</span><br><span class="line">            <span class="comment"># For each channel_out (filter)</span></span><br><span class="line">            <span class="keyword">for</span> i <span class="keyword">in</span> <span class="built_in">range</span>(n_filters):    </span><br><span class="line">                StepByStep._visualize_tensors(</span><br><span class="line">                    axes[i, :],</span><br><span class="line">                    weights[i],</span><br><span class="line">                    layer_name=<span class="string">f&#x27;Filter #<span class="subst">&#123;i&#125;</span>&#x27;</span>, </span><br><span class="line">                    title=<span class="string">&#x27;Channel&#x27;</span></span><br><span class="line">                )</span><br><span class="line">                    </span><br><span class="line">            <span class="keyword">for</span> ax <span class="keyword">in</span> axes.flat:</span><br><span class="line">                ax.label_outer()</span><br><span class="line"></span><br><span class="line">            fig.tight_layout()</span><br><span class="line">            <span class="keyword">return</span> fig</span><br><span class="line">    <span class="keyword">except</span> AttributeError:</span><br><span class="line">        <span class="keyword">return</span></span><br><span class="line">    </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;visualize_filters&#x27;</span>, visualize_filters)</span><br></pre></td></tr></table></figure>
+
+<p>好，现在我们看看过滤器的样子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig=sbs_cnn1.visualize_filters(<span class="string">&#x27;conv1&#x27;</span>,cmap=<span class="string">&#x27;gray&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Feb859eba-6add-4564-bfdf-1066649e50b3%2FUntitled.png?table=block&id=d167db20-8d3f-4cfb-b5fd-11d890d47515&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=780&userId=&cache=v2"></p>
+<p>这是一个可以用来尝试区分我们拥有的不同类别的过滤器吗？ 也许吧，但仅仅通过查看这个过滤器，就很难掌握它有效完成的任务。</p>
+<p>为了真正理解这个过滤器对每个图像的影响，我们需要可视化模型产生的中间值，即每一层的输出！</p>
+<blockquote>
+<p>“我们如何可视化每一层的输出？我们是否必须修改 StepByStep 类来捕获这些输出？”</p>
+</blockquote>
+<p>比这容易得多：我们可以使用钩子！</p>
+<h3 id="钩子"><a href="#钩子" class="headerlink" title="钩子"></a>钩子</h3><p>钩子只是一种强制模型在向前传递或向后传递之后执行函数的方法。 因此，有前钩和后钩。 我们在这里只使用前向钩子，但两者的想法是相同的。</p>
+<p>首先，我们创建一个函数，你猜怎么着，它会与前向传播挂钩。 让我们用一个虚拟模型来说明这个过程：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">dummy_model=nn.Linear(<span class="number">1</span>,<span class="number">1</span>)</span><br><span class="line">dummy_list=[]</span><br><span class="line"><span class="keyword">def</span> <span class="title function_">dummy_hook</span>(<span class="params">layer,inputs,outputs</span>):</span><br><span class="line">    dummy_list.append((layer,inputs,outputs))</span><br></pre></td></tr></table></figure>
+
+<p>（前向）钩子函数采用三个参数：</p>
+<ul>
+<li>模型（或层）</li>
+<li>表示该模型（或层）所采用的输入的张量</li>
+<li>表示该模型（或层）生成的输出的张量</li>
+</ul>
+<p>因此，任何采用三个参数的函数，无论其名称如何，都可以用作钩子。 在我们的例子中（以及在许多其他情况下），我们希望保留通过钩子函数的信息。</p>
+<blockquote>
+<p>您应该使用在钩子函数外部定义的一个或多个变量来存储值。</p>
+</blockquote>
+<p>这就是上面代码片段中 dummy_list 变量的作用。 我们的 dummy_hook() 函数非常基本：它只是将三个参数的元组附加到钩子函数外部定义的 dummy_list 变量。</p>
+<blockquote>
+<p>“如何将钩子函数挂接到模型上？”</p>
+</blockquote>
+<p>有一个方法，register_forward_hook()，它接受钩子函数并返回一个句柄，这样我们就可以跟踪附加到模型的钩子。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dummy_handle=dummy_model.register_forward_hook(dummy_hook)</span><br><span class="line">dummy_handle</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&lt;torch.utils.hooks.RemovableHandle at <span class="number">0x7f27e871e980</span>&gt;</span><br></pre></td></tr></table></figure>
+
+<p>非常简单，是吧。我们来看看它是如何工作的：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dummy_x=torch.tensor([<span class="number">0.3</span>])</span><br><span class="line">dummy_model.forward(dummy_x)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([-<span class="number">0.8366</span>], grad_fn=&lt;ViewBackward0&gt;)</span><br></pre></td></tr></table></figure>
+
+<p>它应该向虚拟列表添加一个新元组，其中包含一个线性层、一个输入张量 (0.3) 和一个输出张量 (-0.8366)。 顺便说一句，你的结果会与我的不同，因为我们在这里没有设定随机种子。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_list</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[]</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>空的？所以它没有工作？</p>
+</blockquote>
+<p>明白了！ 我在这里特意使用模型的forward()方法来说明我们之前在第一章中讨论过的内容：</p>
+<blockquote>
+<p>你不应该调用forward(x)方法！ 您应该调用整个模型（如 model(x) 中所示）来执行前向传递</p>
+<p>否则，你的钩子将无法工作。</p>
+</blockquote>
+<p>这次让我们用正确的方法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_model(dummy_x)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([-<span class="number">0.8366</span>], grad_fn=&lt;ViewBackward0&gt;)</span><br></pre></td></tr></table></figure>
+
+<p>再来看看 dummy_list</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_list</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">[(Linear(in_features=<span class="number">1</span>, out_features=<span class="number">1</span>, bias=<span class="literal">True</span>),</span><br><span class="line">  (tensor([<span class="number">0.3000</span>]),),</span><br><span class="line">  tensor([-<span class="number">0.8366</span>], grad_fn=&lt;ViewBackward0&gt;))]</span><br></pre></td></tr></table></figure>
+
+<p>现在我们可以说，这是我们想要的结果！ 如果您再次调用该模型，它会将另一个元组附加到列表中，依此类推。 这个钩子将被挂接到我们的模型上，直到它被显式删除（因此需要保留句柄）。 要删除钩子，您可以简单地调用它的remove()方法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_handle.remove()</span><br></pre></td></tr></table></figure>
+
+<p>钩子就再见了！ 但我们并没有丢失收集到的信息，因为我们的变量 dummy_list 是在钩子函数之外定义的。</p>
+<p>查看元组的第一个元素：它是模型（或层）的实例。 即使我们使用顺序模型并命名层，这些名称也不会出现在钩子函数中。 所以我们需要聪明一点，自己进行关联。</p>
+<p>现在让我们回到我们的真实模型。 我们可以使用适当的方法获取其所有命名模块的列表：named_modules()（还能是什么？！）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">modules=<span class="built_in">list</span>(sbs_cnn1.model.named_modules())</span><br><span class="line">modules</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">[(<span class="string">&#x27;&#x27;</span>,</span><br><span class="line">  Sequential(</span><br><span class="line">    (conv1): Conv2d(<span class="number">1</span>, <span class="number">1</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">    (relu1): ReLU()</span><br><span class="line">    (maxp1): MaxPool2d(kernel_size=<span class="number">2</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>)</span><br><span class="line">    (flatten): Flatten(start_dim=<span class="number">1</span>, end_dim=-<span class="number">1</span>)</span><br><span class="line">    (fc1): Linear(in_features=<span class="number">16</span>, out_features=<span class="number">10</span>, bias=<span class="literal">True</span>)</span><br><span class="line">    (relu2): ReLU()</span><br><span class="line">    (fc2): Linear(in_features=<span class="number">10</span>, out_features=<span class="number">3</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  )),</span><br><span class="line"> (<span class="string">&#x27;conv1&#x27;</span>, Conv2d(<span class="number">1</span>, <span class="number">1</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>))),</span><br><span class="line"> (<span class="string">&#x27;relu1&#x27;</span>, ReLU()),</span><br><span class="line"> (<span class="string">&#x27;maxp1&#x27;</span>,</span><br><span class="line">  MaxPool2d(kernel_size=<span class="number">2</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>)),</span><br><span class="line"> (<span class="string">&#x27;flatten&#x27;</span>, Flatten(start_dim=<span class="number">1</span>, end_dim=-<span class="number">1</span>)),</span><br><span class="line"> (<span class="string">&#x27;fc1&#x27;</span>, Linear(in_features=<span class="number">16</span>, out_features=<span class="number">10</span>, bias=<span class="literal">True</span>)),</span><br><span class="line"> (<span class="string">&#x27;relu2&#x27;</span>, ReLU()),</span><br><span class="line"> (<span class="string">&#x27;fc2&#x27;</span>, Linear(in_features=<span class="number">10</span>, out_features=<span class="number">3</span>, bias=<span class="literal">True</span>))]</span><br></pre></td></tr></table></figure>
+
+<p>第一个未命名的模块是整个模型本身。 其他命名的模块是它的层。 这些层中的任何一层都可以是钩子函数的输入之一。 因此，我们需要能够在给定相应的图层实例的情况下查找图层名称 - 如果有一些东西我们可以用来轻松查找值，对吧？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">layer_names=&#123;layer:name <span class="keyword">for</span> name,layer <span class="keyword">in</span> modules[<span class="number">1</span>:]&#125;</span><br><span class="line">layer_names</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">&#123;Conv2d(<span class="number">1</span>, <span class="number">1</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>)): <span class="string">&#x27;conv1&#x27;</span>,</span><br><span class="line"> ReLU(): <span class="string">&#x27;relu1&#x27;</span>,</span><br><span class="line"> MaxPool2d(kernel_size=<span class="number">2</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>): <span class="string">&#x27;maxp1&#x27;</span>,</span><br><span class="line"> Flatten(start_dim=<span class="number">1</span>, end_dim=-<span class="number">1</span>): <span class="string">&#x27;flatten&#x27;</span>,</span><br><span class="line"> Linear(in_features=<span class="number">16</span>, out_features=<span class="number">10</span>, bias=<span class="literal">True</span>): <span class="string">&#x27;fc1&#x27;</span>,</span><br><span class="line"> ReLU(): <span class="string">&#x27;relu2&#x27;</span>,</span><br><span class="line"> Linear(in_features=<span class="number">10</span>, out_features=<span class="number">3</span>, bias=<span class="literal">True</span>): <span class="string">&#x27;fc2&#x27;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p>字典是完美的选择：钩子函数将把图层实例作为参数，并在字典中查找它的名称！</p>
+<p>好的，是时候创建一个真正的钩子函数了：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">visualization=[]</span><br><span class="line"><span class="keyword">def</span> <span class="title function_">hook_fn</span>(<span class="params">layer,inputs,outputs</span>):</span><br><span class="line">    name=layer_names[layer]</span><br><span class="line">    visualization[name]=outputs.detach().cpu().numpy()</span><br></pre></td></tr></table></figure>
+
+<p>它实际上非常简单：它查找层的名称并将其用作钩子函数外部定义的字典的键，该字典将存储被钩子层产生的输出。 该函数中的输入被忽略。<br>我们可以列出我们想要从中获取输出的层，循环遍历命名模块的列表，并将我们的函数挂接到所需的层，将句柄保留在另一个字典中：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">layers_to_hook = [<span class="string">&#x27;conv1&#x27;</span>, <span class="string">&#x27;relu1&#x27;</span>, <span class="string">&#x27;maxp1&#x27;</span>, <span class="string">&#x27;flatten&#x27;</span>, <span class="string">&#x27;fc1&#x27;</span>, <span class="string">&#x27;relu2&#x27;</span>, <span class="string">&#x27;fc2&#x27;</span>]</span><br><span class="line"></span><br><span class="line">handles = &#123;&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> name, layer <span class="keyword">in</span> modules:</span><br><span class="line">    <span class="keyword">if</span> name <span class="keyword">in</span> layers_to_hook:</span><br><span class="line">        handles[name] = layer.register_forward_hook(hook_fn)</span><br></pre></td></tr></table></figure>
+
+<p>现在一切都已就位！ 剩下要做的唯一一件事就是实际调用模型，因此触发前向传递，执行钩子，并将所有这些层的输出存储在可视化字典中。</p>
+<p>让我们从验证加载器中获取一个小批量，并使用 StepByStep 类的 Predict() 方法（然后该方法将调用经过训练的模型）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">images_batch, labels_batch = <span class="built_in">next</span>(<span class="built_in">iter</span>(val_loader))</span><br><span class="line">logits = sbs_cnn1.predict(images_batch)</span><br></pre></td></tr></table></figure>
+
+<p>现在，如果一切顺利，我们的可视化字典应该为我们挂钩函数的每一层包含一个键：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">visualization.keys()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dict_keys([<span class="string">&#x27;conv1&#x27;</span>, <span class="string">&#x27;relu1&#x27;</span>, <span class="string">&#x27;maxp1&#x27;</span>, <span class="string">&#x27;flatten&#x27;</span>, <span class="string">&#x27;fc1&#x27;</span>, <span class="string">&#x27;relu2&#x27;</span>,</span><br><span class="line">  <span class="string">&#x27;fc2&#x27;</span>])</span><br></pre></td></tr></table></figure>
+
+<p>答对了！ 他们都在那里！ 但是，在检查其中存储的内容之前，让我们先删除挂钩：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> handle <span class="keyword">in</span> handles.values():</span><br><span class="line">    handle.remove()</span><br><span class="line">handles = &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>确保在钩子完成其用途后始终将其移除，以避免不必要的操作，这些操作可能会减慢模型的速度。</p>
+</blockquote>
+<p> 无论如何，为了让您更容易地挂钩一些层，以便您可以查看它们生成的内容，我们将在 StepByStep 类中附加一些方法：attach_hooks() 和remove_hooks()。</p>
+<p>首先，我们创建两个字典作为属性、可视化和句柄，它们将是外部定义的变量（即方法外部的变量）。</p>
+<p>Attach_hooks() 方法有自己的内部钩子函数，它将在可视化属性中存储图层的输出。 该方法为我们处理一切：层实例及其名称之间的映射，以及向所需层注册钩子函数</p>
+<p>remove_hooks() 与前面的代码片段几乎完全相同，只是它现在使用了handles 属性。</p>
+<p>StepByStep 方法</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;visualization&#x27;</span>, &#123;&#125;)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;handles&#x27;</span>, &#123;&#125;)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">attach_hooks</span>(<span class="params">self, layers_to_hook, hook_fn=<span class="literal">None</span></span>):</span><br><span class="line">    <span class="comment"># Clear any previous values</span></span><br><span class="line">    self.visualization = &#123;&#125;</span><br><span class="line">    <span class="comment"># Creates the dictionary to map layer objects to their names</span></span><br><span class="line">    modules = <span class="built_in">list</span>(self.model.named_modules())</span><br><span class="line">    layer_names = &#123;layer: name <span class="keyword">for</span> name, layer <span class="keyword">in</span> modules[<span class="number">1</span>:]&#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> hook_fn <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        <span class="comment"># Hook function to be attached to the forward pass</span></span><br><span class="line">        <span class="keyword">def</span> <span class="title function_">hook_fn</span>(<span class="params">layer, inputs, outputs</span>):</span><br><span class="line">            <span class="comment"># Gets the layer name</span></span><br><span class="line">            name = layer_names[layer]</span><br><span class="line">            <span class="comment"># Detaches outputs</span></span><br><span class="line">            values = outputs.detach().cpu().numpy()</span><br><span class="line">            <span class="comment"># Since the hook function may be called multiple times</span></span><br><span class="line">            <span class="comment"># for example, if we make predictions for multiple mini-batches</span></span><br><span class="line">            <span class="comment"># it concatenates the results</span></span><br><span class="line">            <span class="keyword">if</span> self.visualization[name] <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">                self.visualization[name] = values</span><br><span class="line">            <span class="keyword">else</span>:</span><br><span class="line">                self.visualization[name] = np.concatenate([self.visualization[name], values])</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> name, layer <span class="keyword">in</span> modules:</span><br><span class="line">        <span class="comment"># If the layer is in our list</span></span><br><span class="line">        <span class="keyword">if</span> name <span class="keyword">in</span> layers_to_hook:</span><br><span class="line">            <span class="comment"># Initializes the corresponding key in the dictionary</span></span><br><span class="line">            self.visualization[name] = <span class="literal">None</span></span><br><span class="line">            <span class="comment"># Register the forward hook and keep the handle in another dict</span></span><br><span class="line">            self.handles[name] = layer.register_forward_hook(hook_fn)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">remove_hooks</span>(<span class="params">self</span>):</span><br><span class="line">    <span class="comment"># Loops through all hooks and removes them</span></span><br><span class="line">    <span class="keyword">for</span> handle <span class="keyword">in</span> self.handles.values():</span><br><span class="line">        handle.remove()</span><br><span class="line">    <span class="comment"># Clear the dict, as all hooks have been removed</span></span><br><span class="line">    self.handles = &#123;&#125;</span><br><span class="line">    </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;attach_hooks&#x27;</span>, attach_hooks)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;remove_hooks&#x27;</span>, remove_hooks)</span><br></pre></td></tr></table></figure>
+
+<p>现在的过程相当简单：给它一个包含要附加挂钩的层名称的列表，然后就完成了！</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1.attach_hooks(layers_to_hook=[<span class="string">&#x27;conv1&#x27;</span>, <span class="string">&#x27;relu1&#x27;</span>, <span class="string">&#x27;maxp1&#x27;</span>, <span class="string">&#x27;flatten&#x27;</span>, <span class="string">&#x27;fc1&#x27;</span>, <span class="string">&#x27;relu2&#x27;</span>, <span class="string">&#x27;fc2&#x27;</span>])</span><br></pre></td></tr></table></figure>
+
+<p>为了让可视化属性填充值，我们仍然需要进行预测：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">images_batch, labels_batch = <span class="built_in">next</span>(<span class="built_in">iter</span>(val_loader))</span><br><span class="line">logits = sbs_cnn1.predict(images_batch)</span><br></pre></td></tr></table></figure>
+
+<p>完成预测后，不要忘记删除挂钩。 顺便说一句，您可以多次调用predict()，并且挂钩层产生的输出将被连接起来。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1.remove_hooks()</span><br></pre></td></tr></table></figure>
+
+<p>在继续之前，不要忘记模型正在生成 logits 作为输出。 为了获得预测类别，我们可以简单地获取每个数据点的最大 Logit 的索引：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">predicted = np.argmax(logits, <span class="number">1</span>)</span><br><span class="line">predicted</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">array([<span class="number">2</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">2</span>, <span class="number">1</span>, <span class="number">0</span>, <span class="number">1</span>, <span class="number">2</span>, <span class="number">1</span>, <span class="number">2</span>, <span class="number">0</span>])</span><br></pre></td></tr></table></figure>
+
+<h3 id="可视化特征图"><a href="#可视化特征图" class="headerlink" title="可视化特征图"></a>可视化特征图</h3><p>首先，让我们可视化从验证加载器采样的前十张图像：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = plot_images(images_batch.squeeze(), labels_batch.squeeze(), n_plot=<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F0292c410-4015-4b19-a4ab-7d6241bb59db%2FUntitled.png?table=block&id=bda44a54-6ed2-45f3-a47d-940c65b7b856&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>我们模型的第一部分，我们称之为特征化器，有四层：典型的卷积块中的三层，以及扁平化层。 这些层的输出是特征图，当我们对验证加载器的第一个小批量进行预测时，这些特征图由我们的钩子函数捕获。</p>
+<p>为了可视化特征图，我们可以在类中添加另一个方法：visible_outputs()。 此方法只是从可视化字典中检索捕获的特征图，并使用我们的 _visualize_tensors() 方法来绘制它们：</p>
+<p>StepByStep 方法</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">visualize_outputs</span>(<span class="params">self, layers, n_images=<span class="number">10</span>, y=<span class="literal">None</span>, yhat=<span class="literal">None</span></span>):</span><br><span class="line">    layers = <span class="built_in">filter</span>(<span class="keyword">lambda</span> l: l <span class="keyword">in</span> self.visualization.keys(), layers)</span><br><span class="line">    layers = <span class="built_in">list</span>(layers)</span><br><span class="line">    shapes = [self.visualization[layer].shape <span class="keyword">for</span> layer <span class="keyword">in</span> layers]</span><br><span class="line">    n_rows = [shape[<span class="number">1</span>] <span class="keyword">if</span> <span class="built_in">len</span>(shape) == <span class="number">4</span> <span class="keyword">else</span> <span class="number">1</span> </span><br><span class="line">              <span class="keyword">for</span> shape <span class="keyword">in</span> shapes]</span><br><span class="line">    total_rows = np.<span class="built_in">sum</span>(n_rows)</span><br><span class="line"></span><br><span class="line">    fig, axes = plt.subplots(total_rows, n_images, </span><br><span class="line">                             figsize=(<span class="number">1.5</span>*n_images, <span class="number">1.5</span>*total_rows))</span><br><span class="line">    axes = np.atleast_2d(axes).reshape(total_rows, n_images)</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># Loops through the layers, one layer per row of subplots</span></span><br><span class="line">    row = <span class="number">0</span></span><br><span class="line">    <span class="keyword">for</span> i, layer <span class="keyword">in</span> <span class="built_in">enumerate</span>(layers):</span><br><span class="line">        start_row = row</span><br><span class="line">        <span class="comment"># Takes the produced feature maps for that layer</span></span><br><span class="line">        output = self.visualization[layer]</span><br><span class="line">            </span><br><span class="line">        is_vector = <span class="built_in">len</span>(output.shape) == <span class="number">2</span></span><br><span class="line">        </span><br><span class="line">        <span class="keyword">for</span> j <span class="keyword">in</span> <span class="built_in">range</span>(n_rows[i]):</span><br><span class="line">            StepByStep._visualize_tensors(</span><br><span class="line">                axes[row, :],</span><br><span class="line">                output <span class="keyword">if</span> is_vector <span class="keyword">else</span> output[:, j].squeeze(),</span><br><span class="line">                y, </span><br><span class="line">                yhat, </span><br><span class="line">                layer_name=layers[i] \</span><br><span class="line">                           <span class="keyword">if</span> is_vector \</span><br><span class="line">                           <span class="keyword">else</span> <span class="string">f&#x27;<span class="subst">&#123;layers[i]&#125;</span>\nfil#<span class="subst">&#123;row-start_row&#125;</span>&#x27;</span>,</span><br><span class="line">                title=<span class="string">&#x27;Image&#x27;</span> <span class="keyword">if</span> (row == <span class="number">0</span>) <span class="keyword">else</span> <span class="literal">None</span></span><br><span class="line">            )</span><br><span class="line">            row += <span class="number">1</span></span><br><span class="line">            </span><br><span class="line">    <span class="keyword">for</span> ax <span class="keyword">in</span> axes.flat:</span><br><span class="line">        ax.label_outer()</span><br><span class="line"></span><br><span class="line">    plt.tight_layout()</span><br><span class="line">    <span class="keyword">return</span> fig</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;visualize_outputs&#x27;</span>, visualize_outputs)</span><br></pre></td></tr></table></figure>
+
+<p>然后，让我们使用上面的方法来绘制模型特征器部分中各层的特征图：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">featurizer_layers = [<span class="string">&#x27;conv1&#x27;</span>, <span class="string">&#x27;relu1&#x27;</span>, <span class="string">&#x27;maxp1&#x27;</span>, <span class="string">&#x27;flatten&#x27;</span>]</span><br><span class="line"></span><br><span class="line"><span class="keyword">with</span> plt.style.context(<span class="string">&#x27;seaborn-v0_8-white&#x27;</span>):</span><br><span class="line">    </span><br><span class="line">    fig = sbs_cnn1.visualize_outputs(featurizer_layers)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F22280c17-4baa-4e9b-91c1-ebc7722e2fa3%2FUntitled.png?table=block&id=79fdeb78-6cb7-41b0-9463-4132ada33d62&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>看起来很酷，对吧？ 尽管我以相同的大小绘制了前四行中的图像，但它们具有不同的尺寸，如左侧的行标签所示。 灰色阴影也按行计算：最大（白色）和最小（黑色）值是在给定层生成的十个图像中计算的； 否则，某些行会太暗（从一层到下一层的范围变化很大）。</p>
+<p>我们可以从这些图像中学到什么？ 首先，将学习到的过滤器与输入图像进行卷积会产生一些有趣的结果：</p>
+<ul>
+<li>对于向左倾斜的对角线（图像#0、#1、#2 和#7），过滤器似乎完全抑制了对角线。</li>
+<li>对于平行线（上例中仅垂直，图像#3 到#6 和#8），过滤器会产生条纹图案，原始线的左侧较亮，右侧较暗。</li>
+<li>对于向右倾斜的对角线（仅图像#9），过滤器会产生具有多种阴影的较粗线条。</li>
+</ul>
+<p>然后，ReLU 激活函数删除负值。 不幸的是，在此操作之后，图像 #6 和 #8（平行垂直线）的所有线条都被抑制，并且看起来与图像 #0、#1、#2 和 #7（对角线向左倾斜）无法区分。</p>
+<p>接下来，最大池化减少了图像的尺寸，并将它们展平以表示十六个特征。</p>
+<p>现在，看看扁平化的特征。 这就是分类器将尝试将图像分为三个不同类别的内容。 对于像这样相对简单的问题，我们几乎可以看到其中的模式。 让我们看看分类器层可以利用它做什么。</p>
+<h3 id="可视化分类器层"><a href="#可视化分类器层" class="headerlink" title="可视化分类器层"></a>可视化分类器层</h3><p>我们模型的第二部分，恰当地称为分类器，具有典型的结构：隐藏层（FC1）、激活函数和输出层（FC2）。 让我们可视化我们的钩子函数针对相同的十张图像捕获的每一层的输出：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">classifier_layers = [<span class="string">&#x27;fc1&#x27;</span>, <span class="string">&#x27;relu2&#x27;</span>, <span class="string">&#x27;fc2&#x27;</span>]</span><br><span class="line"></span><br><span class="line"><span class="keyword">with</span> plt.style.context(<span class="string">&#x27;seaborn-v0_8-white&#x27;</span>):</span><br><span class="line">    fig = sbs_cnn1.visualize_outputs(classifier_layers, y=labels_batch, yhat=predicted)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F457dc4e6-c323-4783-934d-bc49b79e80a1%2FUntitled.png?table=block&id=d8387d9b-329f-4c52-972a-bb28d136a49a&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>隐藏层执行仿射变换（还记得那些吗？），将维度从十六维减少到十维。 接下来，激活函数 ReLU 消除负值，从而在中间行中产生“激活”的特征空间。</p>
+<p>最后，输出层使用这十个值来计算三个逻辑，每个类别一个。 即使不将它们转换为概率，我们也知道最大的 Logit 获胜。 最大的对数显示为最亮的像素，因此我们可以通过查看三种灰色阴影并选择最亮的索引来判断预测的是哪一类。</p>
+<p>分类器的正确率是十分之八。 它对图像 #6 和 #8 做出了错误的预测。 毫不奇怪，这两张图像的垂直线被抑制了。 当垂直线太靠近图像的左边缘时，滤镜似乎无法很好地工作。</p>
+<blockquote>
+<p>模型的准确度如何？</p>
+</blockquote>
+<p>好问题，我们一起来看看</p>
+<h3 id="准确度"><a href="#准确度" class="headerlink" title="准确度"></a>准确度</h3><p>在第3章中，我们使用自己的predict()方法进行预测，并使用Scikit-Learn的指标模块来评估它们。 现在，让我们构建一个方法，该方法还采用数据加载器返回的特征 (x) 和标签 (y)，并采取所有必要的步骤为每个类生成两个值：正确预测的数量和该分类下数据的数量。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">correct</span>(<span class="params">self, x, y, threshold=<span class="number">.5</span></span>):</span><br><span class="line">    self.model.<span class="built_in">eval</span>()</span><br><span class="line">    yhat = self.model(x.to(self.device))</span><br><span class="line">    y = y.to(self.device)</span><br><span class="line">    self.model.train()</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># We get the size of the batch and the number of classes </span></span><br><span class="line">    <span class="comment"># (only 1, if it is binary)</span></span><br><span class="line">    n_samples, n_dims = yhat.shape</span><br><span class="line">    <span class="keyword">if</span> n_dims &gt; <span class="number">1</span>:        </span><br><span class="line">        <span class="comment"># In a multiclass classification, the biggest logit</span></span><br><span class="line">        <span class="comment"># always wins, so we don&#x27;t bother getting probabilities</span></span><br><span class="line">        </span><br><span class="line">        <span class="comment"># This is PyTorch&#x27;s version of argmax, </span></span><br><span class="line">        <span class="comment"># but it returns a tuple: (max value, index of max value)</span></span><br><span class="line">        _, predicted = torch.<span class="built_in">max</span>(yhat, <span class="number">1</span>)</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        n_dims += <span class="number">1</span></span><br><span class="line">        <span class="comment"># In binary classification, we NEED to check if the</span></span><br><span class="line">        <span class="comment"># last layer is a sigmoid (and then it produces probs)</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">isinstance</span>(self.model, nn.Sequential) <span class="keyword">and</span> \</span><br><span class="line">           <span class="built_in">isinstance</span>(self.model[-<span class="number">1</span>], nn.Sigmoid):</span><br><span class="line">            predicted = (yhat &gt; threshold).long()</span><br><span class="line">        <span class="comment"># or something else (logits), which we need to convert</span></span><br><span class="line">        <span class="comment"># using a sigmoid</span></span><br><span class="line">        <span class="keyword">else</span>:</span><br><span class="line">            predicted = (F.sigmoid(yhat) &gt; threshold).long()</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># How many samples got classified correctly for each class</span></span><br><span class="line">    result = []</span><br><span class="line">    <span class="keyword">for</span> c <span class="keyword">in</span> <span class="built_in">range</span>(n_dims):</span><br><span class="line">        n_class = (y == c).<span class="built_in">sum</span>().item()</span><br><span class="line">        n_correct = (predicted[y == c] == c).<span class="built_in">sum</span>().item()</span><br><span class="line">        result.append((n_correct, n_class))</span><br><span class="line">    <span class="keyword">return</span> torch.tensor(result)</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;correct&#x27;</span>, correct)</span><br></pre></td></tr></table></figure>
+
+<p>如果标签有两列或更多列，则意味着我们正在处理多类分类：预测的类别是具有最大 logit 的类别。</p>
+<p>如果只有一列标签，则为二元分类：如果预测概率高于给定阈值（通常为 0.5），则预测类别将为正类别。 但这里有一个问题：如果模型的最后一层不是 sigmoid，我们需要先对 logits 应用 sigmoid 以获得概率，然后才将它们与阈值进行比较。</p>
+<p>然后，对于每个可能的类别，该方法计算出有多少预测与标签匹配，并将结果附加到张量。 生成的张量的形状将为（分类数，2），第一列代表正确的预测，第二列代表数据点的数量。<br>让我们尝试将这个新方法应用于数据加载器的第一个小批量：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1.correct(images_batch, labels_batch)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">5</span>, <span class="number">7</span>],</span><br><span class="line">        [<span class="number">3</span>, <span class="number">3</span>],</span><br><span class="line">        [<span class="number">6</span>, <span class="number">6</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>因此，只有两个错误的预测，都是针对 #0 类（平行线），对应于图像 #6 和 #8，正如我们在上一节中已经看到的。</p>
+<blockquote>
+<p>“如果我想计算数据加载器中所有小批量的数据怎么办？”</p>
+</blockquote>
+<h3 id="应用加载器"><a href="#应用加载器" class="headerlink" title="应用加载器"></a>应用加载器</h3><p> 这就是静态方法 loader_apply() 的作用：它对每个小批量应用一个函数，并在应用 sum 或 Mean 等归约函数之前堆叠结果。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@staticmethod</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">loader_apply</span>(<span class="params">loader, func, reduce=<span class="string">&#x27;sum&#x27;</span></span>):</span><br><span class="line">    results = [func(x, y) <span class="keyword">for</span> i, (x, y) <span class="keyword">in</span> <span class="built_in">enumerate</span>(loader)]</span><br><span class="line">    results = torch.stack(results, axis=<span class="number">0</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> reduce == <span class="string">&#x27;sum&#x27;</span>:</span><br><span class="line">        results = results.<span class="built_in">sum</span>(axis=<span class="number">0</span>)</span><br><span class="line">    <span class="keyword">elif</span> reduce == <span class="string">&#x27;mean&#x27;</span>:</span><br><span class="line">        results = results.<span class="built_in">float</span>().mean(axis=<span class="number">0</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">return</span> results</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;loader_apply&#x27;</span>, loader_apply)</span><br></pre></td></tr></table></figure>
+
+<p>由于它是一个静态方法，我们可以从类本身调用它，传递加载器作为其第一个参数，传递函数（或方法，在本例中）作为其第二个参数。 它将为每个小批量调用 correct() 方法（如上例所示），并将所有结果相加：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(sbs_cnn1.val_loader, sbs_cnn1.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">59</span>, <span class="number">67</span>],</span><br><span class="line">        [<span class="number">55</span>, <span class="number">62</span>],</span><br><span class="line">        [<span class="number">71</span>, <span class="number">71</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>很简单，对吧？ 在下一章中，当我们对图像进行归一化并因此需要计算训练加载器中所有图像的平均值和标准差时，此方法将非常有用。</p>
+<p>从上面的结果中，我们看到我们的模型在验证集中的 200 张图像中正确分类了 185 张，准确率为 92.5%！ 不错，真不错 ：-）</p>
+<h2 id="回顾"><a href="#回顾" class="headerlink" title="回顾"></a>回顾</h2><p>在本章中，我们主要关注模型配置部分，向模型添加卷积层并定义不同的损失函数来处理多类分类问题。 我们还在类中添加了更多方法，以便我们可以可视化模型学习的过滤器，将钩子附加到模型的前向传递，并使用捕获的结果可视化相应的特征图。</p>
+<h3 id="数据准备-1"><a href="#数据准备-1" class="headerlink" title="数据准备"></a>数据准备</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Builds tensors from numpy arrays BEFORE split</span></span><br><span class="line"><span class="comment"># Modifies the scale of pixel values from [0, 255] to [0, 1]</span></span><br><span class="line">x_tensor = torch.as_tensor(images / <span class="number">255</span>).<span class="built_in">float</span>()</span><br><span class="line">y_tensor = torch.as_tensor(labels).long()</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses index_splitter to generate indices for training and</span></span><br><span class="line"><span class="comment"># validation sets</span></span><br><span class="line">train_idx, val_idx = index_splitter(<span class="built_in">len</span>(x_tensor), [<span class="number">80</span>, <span class="number">20</span>])</span><br><span class="line"><span class="comment"># Uses indices to perform the split</span></span><br><span class="line">x_train_tensor = x_tensor[train_idx]</span><br><span class="line">y_train_tensor = y_tensor[train_idx]</span><br><span class="line">x_val_tensor = x_tensor[val_idx]</span><br><span class="line">y_val_tensor = y_tensor[val_idx]</span><br><span class="line"></span><br><span class="line"><span class="comment"># We&#x27;re not doing any data augmentation now</span></span><br><span class="line">train_composer = Compose([Normalize(mean=(<span class="number">.5</span>,), std=(<span class="number">.5</span>,))])</span><br><span class="line">val_composer = Compose([Normalize(mean=(<span class="number">.5</span>,), std=(<span class="number">.5</span>,))])</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses custom dataset to apply composed transforms to each set</span></span><br><span class="line">train_dataset = TransformedTensorDataset(x_train_tensor, y_train_tensor, transform=train_composer)</span><br><span class="line">val_dataset = TransformedTensorDataset(x_val_tensor, y_val_tensor, transform=val_composer)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds a weighted random sampler to handle imbalanced classes</span></span><br><span class="line">sampler = make_balanced_sampler(y_train_tensor)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Uses sampler in the training set to get a balanced data loader</span></span><br><span class="line">train_loader = DataLoader(dataset=train_dataset, batch_size=<span class="number">16</span>, sampler=sampler)</span><br><span class="line">val_loader = DataLoader(dataset=val_dataset, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型配置-1"><a href="#模型配置-1" class="headerlink" title="模型配置"></a>模型配置</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line">model_cnn1 = nn.Sequential()</span><br><span class="line"></span><br><span class="line"><span class="comment"># Featurizer</span></span><br><span class="line"><span class="comment"># Block 1: 1@10x10 -&gt; n_channels@8x8 -&gt; n_channels@4x4</span></span><br><span class="line">n_channels = <span class="number">1</span></span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;conv1&#x27;</span>, nn.Conv2d(in_channels=<span class="number">1</span>, out_channels=n_channels, kernel_size=<span class="number">3</span>))</span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;relu1&#x27;</span>, nn.ReLU())</span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;maxp1&#x27;</span>, nn.MaxPool2d(kernel_size=<span class="number">2</span>))</span><br><span class="line"><span class="comment"># Flattening: n_channels * 4 * 4</span></span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;flatten&#x27;</span>, nn.Flatten())</span><br><span class="line"></span><br><span class="line"><span class="comment"># Classification</span></span><br><span class="line"><span class="comment"># Hidden Layer</span></span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;fc1&#x27;</span>, nn.Linear(in_features=n_channels*<span class="number">4</span>*<span class="number">4</span>, out_features=<span class="number">10</span>))</span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;relu2&#x27;</span>, nn.ReLU())</span><br><span class="line"><span class="comment"># Output Layer</span></span><br><span class="line">model_cnn1.add_module(<span class="string">&#x27;fc2&#x27;</span>, nn.Linear(in_features=<span class="number">10</span>, out_features=<span class="number">3</span>))</span><br><span class="line"></span><br><span class="line">lr = <span class="number">0.1</span></span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_cnn1 = optim.SGD(model_cnn1.parameters(), lr=lr)</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型训练-1"><a href="#模型训练-1" class="headerlink" title="模型训练"></a>模型训练</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn1 = StepByStep(model_cnn1, multi_loss_fn, optimizer_cnn1)</span><br><span class="line">sbs_cnn1.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_cnn1.train(<span class="number">20</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="可视化过滤器-1"><a href="#可视化过滤器-1" class="headerlink" title="可视化过滤器"></a>可视化过滤器</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig_filters = sbs_cnn1.visualize_filters(<span class="string">&#x27;conv1&#x27;</span>, cmap=<span class="string">&#x27;gray&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="获取输出"><a href="#获取输出" class="headerlink" title="获取输出"></a>获取输出</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">featurizer_layers = [<span class="string">&#x27;conv1&#x27;</span>, <span class="string">&#x27;relu1&#x27;</span>, <span class="string">&#x27;maxp1&#x27;</span>, <span class="string">&#x27;flatten&#x27;</span>]</span><br><span class="line">classifier_layers = [<span class="string">&#x27;fc1&#x27;</span>, <span class="string">&#x27;relu2&#x27;</span>, <span class="string">&#x27;fc2&#x27;</span>]</span><br><span class="line"></span><br><span class="line">sbs_cnn1.attach_hooks(layers_to_hook=featurizer_layers + classifier_layers)</span><br><span class="line"></span><br><span class="line">images_batch, labels_batch = <span class="built_in">next</span>(<span class="built_in">iter</span>(val_loader))</span><br><span class="line">logits = sbs_cnn1.predict(images_batch)</span><br><span class="line">predicted = np.argmax(logits, <span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">sbs_cnn1.remove_hooks()</span><br></pre></td></tr></table></figure>
+
+<h3 id="可视化特征图-1"><a href="#可视化特征图-1" class="headerlink" title="可视化特征图"></a>可视化特征图</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> plt.style.context(<span class="string">&#x27;seaborn-white&#x27;</span>):</span><br><span class="line">    fig_maps1 = sbs_cnn1.visualize_outputs(featurizer_layers)</span><br><span class="line">    fig_maps2 = sbs_cnn1.visualize_outputs(classifier_layers, y=labels_batch, yhat=predicted)</span><br></pre></td></tr></table></figure>
+
+<h3 id="计算精度"><a href="#计算精度" class="headerlink" title="计算精度"></a>计算精度</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(sbs_cnn1.val_loader, sbs_cnn1.correct)</span><br></pre></td></tr></table></figure>
+
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>在本章中，我们介绍了卷积和相关概念，并构建了一个卷积神经网络来解决多类分类问题。 这就是我们所涵盖的内容：</p>
+<ul>
+<li>了解内核&#x2F;过滤器在卷积中的作用</li>
+<li>了解跨步的作用及其对输出形状的影响</li>
+<li>意识到输入和输出通道的组合有多少个过滤器</li>
+<li>使用填充来保留输出的形状</li>
+<li>使用池化来缩小输出的形状</li>
+<li>将卷积、激活函数和池化组装成典型的卷积块</li>
+<li>使用一系列卷积块来预处理图像，将其转换为特征</li>
+<li>（重新）构建 Yann LeCun 的 LeNet-5</li>
+<li>为多类分类问题生成包含 1,000 个图像的数据集</li>
+<li>了解softmax 函数如何将logits 转换为概率</li>
+<li>了解 PyTorch 的负对数似然和交叉熵损失之间的差异</li>
+<li>（再次）强调选择最后一层和损失函数的正确组合的重要性</li>
+<li>使用损失函数处理不平衡数据集</li>
+<li>构建我们自己的卷积神经网络，使用由典型卷积块组成的特征器，然后是具有单个隐藏层的传统分类器</li>
+<li>可视化学习到的过滤器</li>
+<li>理解并使用（前向）钩子来捕获输出我们模型的中间层</li>
+<li>在钩子发挥作用后将其移除，以免影响模型速度</li>
+<li>使用捕获的输出来可视化特征图，并了解模型学习的过滤器如何产生将馈送到分类器部分的特征</li>
+<li>多类分类问题的计算精度</li>
+<li>创建静态方法以将函数应用于数据加载器中的所有小批量</li>
+</ul>
+<p>恭喜：你在解决许多计算机视觉问题方面迈出了一大步。 本章介绍了与（几乎）所有卷积相关的基本概念。 我们仍然需要在我们的武器库中添加更多技巧，这样我们就可以使我们的模型更加强大。 在下一章中，我们将学习多个通道上的卷积、使用 dropout 层来正则化模型、查找学习率以及优化器的内部工作原理。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/PyTorch/" rel="tag">PyTorch</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/softmax/" rel="tag">softmax</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" rel="tag">卷积神经网络</a></li></ul></div><div class="post-nav"><a class="next" href="/2024/02/23/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E5%AF%B9%E7%89%B9%E5%BE%81%E7%A9%BA%E9%97%B4%E7%9A%84%E5%BD%B1%E5%93%8D/">激活函数对特征空间的影响</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a> <a href="/tags/%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/" style="font-size: 15px;">梯度下降</a> <a href="/tags/%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92/" style="font-size: 15px;">线性回归</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/FATE/" style="font-size: 15px;">FATE</a> <a href="/tags/%E4%BC%98%E5%8C%96%E5%99%A8/" style="font-size: 15px;">优化器</a> <a href="/tags/%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0/" style="font-size: 15px;">损失函数</a> <a href="/tags/sigmoid/" style="font-size: 15px;">sigmoid</a> <a href="/tags/MSELoss/" style="font-size: 15px;">MSELoss</a> <a href="/tags/Linear/" style="font-size: 15px;">Linear</a> <a href="/tags/Sequential/" style="font-size: 15px;">Sequential</a> <a href="/tags/TensorBoard/" style="font-size: 15px;">TensorBoard</a> <a href="/tags/matplotlib/" style="font-size: 15px;">matplotlib</a> <a href="/tags/Logits/" style="font-size: 15px;">Logits</a> <a href="/tags/Scikit-Learn/" style="font-size: 15px;">Scikit-Learn</a> <a href="/tags/BCELoss/" style="font-size: 15px;">BCELoss</a> <a href="/tags/Scikit/" style="font-size: 15px;">Scikit</a> <a href="/tags/Sigmod/" style="font-size: 15px;">Sigmod</a> <a href="/tags/ReLU/" style="font-size: 15px;">ReLU</a> <a href="/tags/Leaky-ReLU/" style="font-size: 15px;">Leaky ReLU</a> <a href="/tags/TanH/" style="font-size: 15px;">TanH</a> <a href="/tags/PreReLU/" style="font-size: 15px;">PreReLU</a> <a href="/tags/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0/" style="font-size: 15px;">激活函数</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E6%A8%A1%E5%9E%8B/" style="font-size: 15px;">深度模型</a> <a href="/tags/softmax/" style="font-size: 15px;">softmax</a> <a href="/tags/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">卷积神经网络</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/02/26/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/">卷积神经网络</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/23/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E5%AF%B9%E7%89%B9%E5%BE%81%E7%A9%BA%E9%97%B4%E7%9A%84%E5%BD%B1%E5%93%8D/">激活函数对特征空间的影响</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/21/%E4%BD%BF%E7%94%A8AI%E8%BF%9B%E8%A1%8C%E5%9B%BE%E5%83%8F%E5%88%86%E7%B1%BB/">使用AI进行图像分类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/07/%E7%94%A8AI%E6%A8%A1%E5%9E%8B%E5%A4%84%E7%90%86%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98/">用AI模型处理分类问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E9%87%8D%E6%96%B0%E6%80%9D%E8%80%83%E8%AE%AD%E7%BB%83%E5%BE%AA%E7%8E%AF/">重新思考训练循环</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/26/%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92%E9%97%AE%E9%A2%98/">一个简单的线性回归问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/Fate%E7%9A%84%E5%8D%95%E6%9C%BA%E9%83%A8%E7%BD%B2/">Fate的单机部署</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/%E5%8F%AF%E8%A7%86%E5%8C%96%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/">可视化梯度下降</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/10/MacOS%E4%B8%8A%E5%AE%89%E8%A3%85PyTorch%E7%8E%AF%E5%A2%83/">MacOS上安装PyTorch环境</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+  });
+</script><script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML" async></script><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
