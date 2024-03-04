@@ -1,0 +1,834 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>Ai图像识别之--剪刀石头布 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">Ai图像识别之--剪刀石头布</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">Ai图像识别之--剪刀石头布</h1><div class="post-meta">2024-03-04<span> | </span><span class="category"><a href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></span></div><div class="post-content"><p>本章我们将学习：</p>
+<ul>
+<li>标准化图像数据集</li>
+<li>训练模型根据手部图像预测石头、剪刀、布的姿势</li>
+<li>使用dropout层来正则化模型</li>
+<li>了解如何找到学习率来训练模型</li>
+<li>了解 Adam 优化器如何使用自适应学习率</li>
+<li>捕获梯度和参数以可视化它们在训练过程中的演变</li>
+<li>了解动量和 Nesterov 动量如何发挥作用</li>
+<li>使用调度程序在训练期间实施学习率变化</li>
+</ul>
+<p>本章要导入的依赖如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> numpy <span class="keyword">as</span> np</span><br><span class="line"><span class="keyword">from</span> PIL <span class="keyword">import</span> Image</span><br><span class="line"><span class="keyword">from</span> copy <span class="keyword">import</span> deepcopy</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="keyword">import</span> torch.nn.functional <span class="keyword">as</span> F</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader, TensorDataset, random_split</span><br><span class="line"><span class="keyword">from</span> torchvision.transforms <span class="keyword">import</span> Compose, ToTensor, Normalize, \</span><br><span class="line">ToPILImage, Resize</span><br><span class="line"><span class="keyword">from</span> torchvision.datasets <span class="keyword">import</span> ImageFolder</span><br><span class="line"><span class="keyword">from</span> torch.optim.lr_scheduler <span class="keyword">import</span> StepLR, ReduceLROnPlateau, \</span><br><span class="line">MultiStepLR, CyclicLR, LambdaLR</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> stepbystep.v2 <span class="keyword">import</span> StepByStep</span><br><span class="line"><span class="keyword">from</span> data_generation.rps <span class="keyword">import</span> download_rps</span><br></pre></td></tr></table></figure>
+
+<h2 id="剪刀石头布"><a href="#剪刀石头布" class="headerlink" title="剪刀石头布"></a>剪刀石头布</h2><blockquote>
+<p>……蜥蜴，史波克！ 游戏的“扩展”版本出现在《生活大爆炸》系列的“蜥蜴-史波克扩展”一集中，由萨姆·卡斯和凯伦·布莱拉开发。 要了解有关扩展版本的更多信息，请访问 Sam Kass 关于该游戏的页面。</p>
+</blockquote>
+<p>撇开琐事不谈，我想你可能对我们迄今为止使用的图像数据集有点厌倦，对吧？ 好吧，至少，它不是 MNIST！ 但现在是时候使用不同的数据集了：剪刀石头布（不幸的是，没有蜥蜴或史波克）。</p>
+<blockquote>
+<p>该数据集由 Laurence Moroney (<a href="mailto:lmoroney@gmail.com">lmoroney@gmail.com</a> &#x2F; <a target="_blank" rel="noopener" href="http://laurencemoroney.com/">laurencemoroney.com</a>) 创建，可以在他的网站上找到：Rock Paper Scissors Dataset。</p>
+</blockquote>
+<p>该数据集获得知识共享 (CC BY 2.0) 许可。 未对数据集进行任何更改。</p>
+<blockquote>
+</blockquote>
+<p>该数据集包含 2,892 张不同手部的图像，这些图像在白色背景下呈典型的石头、剪刀、布姿势。 这也是一个合成数据集，因为图像是使用 CGI 技术生成的。 每个图像的大小为 300x300 像素，有四个通道 (RGBA)。</p>
+<blockquote>
+<p>RGBA 代表红-绿-蓝-Alpha，它是传统的 RGB 颜色模型以及指示每个像素不透明程度的 Alpha 通道。 不要介意 Alpha 通道，它稍后会被删除。</p>
+</blockquote>
+<p>训练集（2,520 张图像）可以在<a target="_blank" rel="noopener" href="https://storage.googleapis.com/laurencemoroney-blog.appspot.com/rps.zip">这里下载</a>，测试集（372 张图像）可以在<a target="_blank" rel="noopener" href="https://storage.googleapis.com/laurencemoroney-blog.appspot.com/rps-test-set.zip">这里下载</a>。 在JupyterNotebook中，数据集将被下载并分别提取到 rps 和 rps-test-set 文件夹中。</p>
+<p>以下是其图像的一些示例，每个姿势一个。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F3d481b2c-d2cb-4284-ac36-2f4540b294b2%2FUntitled.png?table=block&id=4413a9ea-d11e-4a2a-bc5b-59c86ad203b1&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<h2 id="数据准备"><a href="#数据准备" class="headerlink" title="数据准备"></a>数据准备</h2><p>这次数据准备步骤会要求更高一些，因为我们将标准化图像（这次是真正的——不再有最小-最大缩放！）。 此外，我们现在可以使用 ImageFolder 数据集。</p>
+<h3 id="ImageFolder"><a href="#ImageFolder" class="headerlink" title="ImageFolder"></a>ImageFolder</h3><p>这不是数据集本身，而是一个你可以与自己的图片一起使用的通用数据集，它们可以被组织在多个子文件夹中，每个子文件夹按照类别命名并且包含这个子类的相应图像。</p>
+<p>剪刀石头布数据集就是按照这种方式组织的：在训练数据集的rps文件夹下面，有三个按照类别（石头剪刀布）命名的子文件夹。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">rps/paper/paper01-<span class="number">000.</span>png</span><br><span class="line">rps/paper/paper01-<span class="number">001.</span>png</span><br><span class="line">rps/rock/rock01-<span class="number">000.</span>png</span><br><span class="line">rps/rock/rock01-<span class="number">001.</span>png</span><br><span class="line">rps/scissors/scissors01-<span class="number">000.</span>png</span><br><span class="line">rps/scissors/scissors01-<span class="number">001.</span>png</span><br></pre></td></tr></table></figure>
+
+<p>这个数据集也是非常平衡的，每个子文件夹包含这个分类的840个图像。</p>
+<p>ImageFolder数据集只需要一个根文件夹作为必选参数，在我们的例子中就是rps。但是它还有另外四个可选参数：</p>
+<ul>
+<li>transform: 它告诉数据集应该给每个图像使用哪种转换，这里的转换就是我们之前讲过的数据增强的内容（反转、翻转、拉伸、裁剪等等）。</li>
+<li>target_transform: 目前为止，我们的目标总是证书，所以这个参数没有什么意义；如果你的目标参数是一个图像，这个参数就有用了。</li>
+<li>loader: 这个参数是一个函数，它用于当你使用无法被PIL处理的图像时，从一个指定路径下加载图像。</li>
+<li>is_valid_file: 这个参数是一个函数，它用于验证图像是否损坏。</li>
+</ul>
+<p>接下来让我们来创建数据集：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">temp_transform=Compose([Resize(<span class="number">28</span>),ToTensor()])</span><br><span class="line">temp_dataset=ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>,transform=temp_transform)</span><br></pre></td></tr></table></figure>
+
+<p>这里我们只用了transform这个可选参数，并进行了最小化的转换。首先，图像的尺寸被设置为28*28像素（并且会通过PIL自动转换为RGB色彩模式，因此会丢失alpha通道），然后图像被转换为张量。更小的图像能加快我们的模型训练，并且在CPU模式下执行更快。让我们加载数据集中的第一个图像，然后看看它的形状和对应的标签。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">temp_dataset[<span class="number">0</span>][<span class="number">0</span>].shape,temp_dataset[<span class="number">0</span>][<span class="number">1</span>]</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(torch.Size([<span class="number">3</span>,<span class="number">28</span>,<span class="number">28</span>],<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>非常棒！</p>
+<blockquote>
+<p>等等，你承诺的标准呢？</p>
+</blockquote>
+<h3 id="标准"><a href="#标准" class="headerlink" title="标准"></a>标准</h3><p>要标准化数据点，我们需要先知道它们的均值和标准差。我们的石头剪刀布图像的平均像素值是什么？标准差呢？我们需要加载数据来计算它们。好消息是，我们有一个已经图像调整尺寸的数据集副本，现在还差一个数据加载器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">temp_loader=DataLoader(temp_dataset,batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>无需担心数据的打乱，因为我们不会用这个加载器去训练模型。我们只用它来计算静态数据。顺便说一句，我们需要统计normalize()转换器的每个通道。</p>
+<p>所以，我们来创建一个函数，它用于处理一个小批量数据（包括图像和标签），并且计算每个图像的每个通道的像素均值和标准差，然后把所有图像的计算结果加起来。最后我们把这个函数加入到StepByStep类中。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@staticmethod</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">statistics_per_channel</span>(<span class="params">images, labels</span>): </span><br><span class="line">	<span class="comment"># NCHW</span></span><br><span class="line">	n_samples, n_channels, n_height, n_weight = images.size()</span><br><span class="line">	<span class="comment"># Flatten HW into a single dimension</span></span><br><span class="line">	flatten_per_channel = images.reshape(n_samples, n_channels, -<span class="number">1</span>)</span><br><span class="line">	<span class="comment"># Computes statistics of each image per channel # Average pixel value per channel</span></span><br><span class="line">	<span class="comment"># (n_samples, n_channels)</span></span><br><span class="line">	means = flatten_per_channel.mean(axis=<span class="number">2</span>)</span><br><span class="line">	<span class="comment"># Standard deviation of pixel values per channel # (n_samples, n_channels)</span></span><br><span class="line">	stds = flatten_per_channel.std(axis=<span class="number">2</span>)</span><br><span class="line">	<span class="comment"># Adds up statistics of all images in a mini-batch # (1, n_channels)</span></span><br><span class="line">	sum_means = means.<span class="built_in">sum</span>(axis=<span class="number">0</span>)</span><br><span class="line">	sum_stds = stds.<span class="built_in">sum</span>(axis=<span class="number">0</span>)</span><br><span class="line">	<span class="comment"># Makes a tensor of shape (1, n_channels)</span></span><br><span class="line">	<span class="comment"># with the number of samples in the mini-batch</span></span><br><span class="line">	n_samples = torch.tensor([n_samples]*n_channels).<span class="built_in">float</span>()</span><br><span class="line">	<span class="comment"># Stack the three tensors on top of one another</span></span><br><span class="line">	<span class="comment"># (3, n_channels)</span></span><br><span class="line">	<span class="keyword">return</span> torch.stack([n_samples, sum_means, sum_stds], axis=<span class="number">0</span>)</span><br><span class="line">  </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;statistics_per_channel&#x27;</span>,</span><br><span class="line">statistics_per_channel)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">first_images, first_labels = <span class="built_in">next</span>(<span class="built_in">iter</span>(temp_loader))</span><br><span class="line">StepByStep.statistics_per_channel(first_images, first_labels)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">16.0000</span>, <span class="number">16.0000</span>, <span class="number">16.0000</span>],</span><br><span class="line">          [<span class="number">13.8748</span>, <span class="number">13.3048</span>, <span class="number">13.1962</span>],</span><br><span class="line">          [ <span class="number">3.0507</span>,  <span class="number">3.8268</span>,  <span class="number">3.9754</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>将这个函数用于处理第一个小批量数据，我们得到了如上的结果：每一列表示一个通道，行分别代表了数据点的个数、均值的合计值以及标准差的合计值。</p>
+<p>我们可以复用之前创建的loaer_apply()方法来获得整个数据集的合计值：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">results = StepByStep.loader_apply(temp_loader,</span><br><span class="line">      StepByStep.statistics_per_channel)</span><br><span class="line">results</span><br></pre></td></tr></table></figure>
+
+<p>输出结果如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">2520.0000</span>, <span class="number">2520.0000</span>, <span class="number">2520.0000</span>],</span><br><span class="line">          [<span class="number">2142.5359</span>, <span class="number">2070.0811</span>, <span class="number">2045.1442</span>],</span><br><span class="line">          [ <span class="number">526.3024</span>,  <span class="number">633.0677</span>,  <span class="number">669.9554</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>所以，我们可以计算每个通道均值的平均值（这听起来有点奇怪，我知道）和标准差的平均值。我们最好创建一个方法，它接收数据加载器作为参数并且返回一个Normalize()转换器实例：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"></span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>注意：对于标准化操作，应该总是使用训练数据集来计算统计值。</p>
+</blockquote>
+<p>现在我们使用这个方法来创建一个转换器来标准化我们的数据集：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">rmalizer = StepByStep.make_normalizer(temp_loader)</span><br><span class="line">normalizer</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Normalize(mean=tensor([<span class="number">0.8502</span>, <span class="number">0.8215</span>, <span class="number">0.8116</span>]),</span><br><span class="line">            std=tensor([<span class="number">0.2089</span>, <span class="number">0.2512</span>, <span class="number">0.2659</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>还记得PyTorch将像素值转换为区间值[0,1]吗？红色（第一个）通道的均值的平均值是0.8502，其方差的平均值是0.2089。</p>
+<blockquote>
+<p>在下一章，当使用预训练模型时，我们将使用预计算统计值来标准化输入参数。</p>
+</blockquote>
+<h3 id="真实的数据集"><a href="#真实的数据集" class="headerlink" title="真实的数据集"></a>真实的数据集</h3><p>是时候使用Normalize()构建我们的真实数据集了，以及我们从（临时）训练集中学到的统计数据。数据准备步骤如下所示：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">composer = Compose([Resize(<span class="number">28</span>), ToTensor(),normalizer])</span><br><span class="line">train_data = ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>, transform=composer)</span><br><span class="line">val_data = ImageFolder(root=<span class="string">&#x27;rps-test-set&#x27;</span>, transform=composer) <span class="number">7</span></span><br><span class="line"><span class="comment"># Builds a loader of each set</span></span><br><span class="line">train_loader = DataLoader(train_data, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_loader = DataLoader(val_data, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>尽管数据集的第二部分叫做rips-test-set，但是我们将使用它作为验证数据集。因为训练数据集和验证数据集在不同的文件夹中，因此无需进行数据拆分。</p>
+<p>接下来，使用这两个数据集来创建对应的数据加载器，记得要打乱训练数据集的顺序。</p>
+<p>我们来看看真实训练数据集中的数据长什么样子：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F0c178cef-aac1-47d4-8909-975ecc5684fa%2FIMG_0244.jpeg?table=block&id=7b49eae5-6c06-4502-af5c-936e10daf2ab&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1900&userId=&cache=v2"></p>
+<blockquote>
+<p>图像色彩出了什么问题？</p>
+</blockquote>
+<p>图像的色彩没有问题，它只是像素值标准化后的效果。现在我们有了彩色的图像，我们可以看看在卷积神经网络中是如何处理这些图像的。</p>
+<h2 id="三通道卷积"><a href="#三通道卷积" class="headerlink" title="三通道卷积"></a>三通道卷积</h2><p>之前，是一个单通道的图像和一个单通道的过滤器。虽然有很多过滤器，但是它们都是单通道的。现在是一个三通道的图像和一个三通道的过滤器。或者说有很多过滤器，但是它们每个都是三通道的。</p>
+<p>在一个三通道的图像上卷积一个三通道的过滤器，将输出一个单一值，表示如下：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F23803046-47af-49d9-af00-dd666543fd33%2FIMG_0245.jpeg?table=block&id=68158c3b-64a3-43da-a1ca-01a9b5755e01&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1790&userId=&cache=v2"></p>
+<p>我们可以认为它执行了三个卷机，每个都是对应的区域&#x2F;通道和过滤器&#x2F;通道的元素对应乘法，最后每个通道会产生三个值。将每个通道的结果相加，将输出期望的单一值。下图更好的说明了这一点：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fd5f3bfa0-f993-403a-9e34-c5c612767820%2FIMG_0246.jpeg?table=block&id=bd994d3e-74d4-400e-aace-e67e7b47c5b4&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1730&userId=&cache=v2"></p>
+<p>其代码标识如下</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">regions = np.array([[[</span><br><span class="line">[<span class="number">5</span>, <span class="number">0</span>, <span class="number">8</span>],</span><br><span class="line">[<span class="number">1</span>, <span class="number">9</span>, <span class="number">5</span>],</span><br><span class="line">[<span class="number">6</span>, <span class="number">0</span>, <span class="number">2</span>]],</span><br><span class="line">[[<span class="number">0</span>, <span class="number">5</span>, <span class="number">4</span>],</span><br><span class="line"> [<span class="number">8</span>, <span class="number">1</span>, <span class="number">9</span>],</span><br><span class="line"> [<span class="number">4</span>, <span class="number">8</span>, <span class="number">1</span>]],</span><br><span class="line">[[<span class="number">4</span>, <span class="number">2</span>, <span class="number">0</span>],</span><br><span class="line"> [<span class="number">6</span>, <span class="number">3</span>, <span class="number">0</span>],</span><br><span class="line">[<span class="number">5</span>, <span class="number">2</span>, <span class="number">8</span>]]]])</span><br><span class="line">regions.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>)</span><br><span class="line"> </span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">three_channel_filter = np.array([[[</span><br><span class="line">[<span class="number">0</span>, <span class="number">3</span>, <span class="number">0</span>],</span><br><span class="line">[<span class="number">1</span>, <span class="number">0</span>, <span class="number">1</span>],</span><br><span class="line">[<span class="number">2</span>, <span class="number">1</span>, <span class="number">0</span>]],</span><br><span class="line">[[<span class="number">2</span>, <span class="number">1</span>, <span class="number">0</span>],</span><br><span class="line"> [<span class="number">0</span>, <span class="number">3</span>, <span class="number">1</span>],</span><br><span class="line"> [<span class="number">1</span>, -<span class="number">1</span>, <span class="number">0</span>]],</span><br><span class="line">[[<span class="number">0</span>, <span class="number">1</span>, <span class="number">3</span>],</span><br><span class="line"> [-<span class="number">1</span>, -<span class="number">2</span>, <span class="number">0</span>],</span><br><span class="line"> [<span class="number">2</span>, <span class="number">0</span>, <span class="number">1</span>]]]])</span><br><span class="line"></span><br><span class="line">three_channel_filter.shape </span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(<span class="number">1</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">result = F.conv2d(torch.as_tensor(regions),</span><br><span class="line">                    torch.as_tensor(three_channel_filter))</span><br><span class="line">result, result.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([[[[<span class="number">39</span>]]]]), torch.Size([<span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>]))</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>如果有两个过滤器呢？</p>
+</blockquote>
+<p>很高兴你问了！下图说明了这样一个事实，即每个过滤器的通道与所卷积通道的图像一样多。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F6605c31c-4476-4dd5-8120-2945a9eed863%2FIMG_0247.jpeg?table=block&id=9c14fd61-5e5d-401e-b769-d25df9bd914d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1770&userId=&cache=v2"></p>
+<p>如果你有两个过滤器，并且输入的图像有三个通道，那么每个过滤器有三个通道，并且输出的是两个通道。</p>
+<blockquote>
+<p>卷积输出的通道和过滤器一样多。</p>
+</blockquote>
+<p>好了，是时候开发一个更好的模型了。</p>
+<h2 id="更好的模型"><a href="#更好的模型" class="headerlink" title="更好的模型"></a>更好的模型</h2><p>我们把Sequential模型放在一边，来重新创建一个模型类。这次模型的构造函数接收两个参数：n_filters和p。n_filters代表了我们的模型的两个卷积块的输出通道的数量。并且，如你所见，下属代码中使用p作为概率的dropout。</p>
+<blockquote>
+<p>Dropout是什么？</p>
+</blockquote>
+<p>这个概念我们等一会儿再讲。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">CNN2</span>(nn.Module):</span><br><span class="line">		<span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, n_filters, p=<span class="number">0.0</span></span>):</span><br><span class="line">				<span class="built_in">super</span>(CNN2, self).__init__() self.n_filters = n_filters self.p = p</span><br><span class="line">				<span class="comment"># Creates the convolution layers self.conv1 = nn.Conv2d(</span></span><br><span class="line">              in_channels=<span class="number">3</span>,</span><br><span class="line">              out_channels=n_filters,</span><br><span class="line">              kernel_size=<span class="number">3</span></span><br><span class="line">          )</span><br><span class="line">          self.conv2 = nn.Conv2d(</span><br><span class="line">              in_channels=n_filters,</span><br><span class="line">              out_channels=n_filters,</span><br><span class="line">              kernel_size=<span class="number">3</span></span><br><span class="line">				)</span><br><span class="line">				<span class="comment"># Creates the linear layers</span></span><br><span class="line">				<span class="comment"># Where does this 5 * 5 come from?! Check it below </span></span><br><span class="line">				self.fc1 = nn.Linear(n_filters * <span class="number">5</span> * <span class="number">5</span>, <span class="number">50</span>) </span><br><span class="line">				self.fc2 = nn.Linear(<span class="number">50</span>, <span class="number">3</span>)</span><br><span class="line">				<span class="comment"># Creates dropout layers</span></span><br><span class="line">				self.drop = nn.Dropout(self.p)</span><br></pre></td></tr></table></figure>
+
+<p>这里有两个卷积层，两个线形层，fc1(隐藏层)和 fc2(输出层)。</p>
+<blockquote>
+<p>激活函数和最大化池哪去了？</p>
+</blockquote>
+<p>好吧，最大化池化层不学习任何东西，所以我们可以使用来自F.max_pool2d()函数。同样的使用激活函数F.relu()。</p>
+<blockquote>
+<p>如果你选择参数化的ReLU（PReLU），你就不能在用上面这个函数了，因为它需要学习参数洗漱。</p>
+</blockquote>
+<p>另一方面，你需要控制模型参数，并且没有对于不同层的钩子函数，所以你将无法补货激活函数和最大化池化操作的输出。</p>
+<p>让我们在名为featurizer的函数中创建我们的两个卷积块：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">featurizer</span>(<span class="params">self, x</span>):</span><br><span class="line">		<span class="comment"># First convolutional block</span></span><br><span class="line">		<span class="comment"># 3@28x28 -&gt; n_filters@26x26 -&gt; n_filters@13x13</span></span><br><span class="line">		x = self.conv1(x)</span><br><span class="line">		x = F.relu(x)</span><br><span class="line">		x = F.max_pool2d(x, kernel_size=<span class="number">2</span>)</span><br><span class="line">		<span class="comment"># Second convolutional block</span></span><br><span class="line">		<span class="comment"># n_filters@13x13 -&gt; n_filters@11x11 -&gt; n_filters@5x5 x = self.conv2(x)</span></span><br><span class="line">		x = F.relu(x)</span><br><span class="line">		x = F.max_pool2d(x, kernel_size=<span class="number">2</span>)</span><br><span class="line">		<span class="comment"># Input dimension (n_filters@5x5)</span></span><br><span class="line">		<span class="comment"># Output dimension (n_filters * 5 * 5)</span></span><br><span class="line">		x = nn.Flatten()(x)</span><br><span class="line">		<span class="keyword">return</span> x</span><br></pre></td></tr></table></figure>
+
+<p>在这个函数中，x既是输入参数也是输出参数。featurizer输出代表n_filters乘以25的特征张量。</p>
+<p>下一步是使用线形层来创建一个classfier，一个座位隐藏层，其他作为输出层。但是还有更多的内容：在每一个线形层之前有一个dropout层，并且它将遗弃概率值（也就是模型的第二个参数p）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">classifier</span>(<span class="params">self, x</span>):</span><br><span class="line">		<span class="comment"># Classifier</span></span><br><span class="line">		<span class="comment"># Hidden Layer</span></span><br><span class="line">		<span class="comment"># Input dimension (n_feature * 5 * 5) # Output dimension (50)</span></span><br><span class="line">		<span class="keyword">if</span> self.p &gt; <span class="number">0</span>:</span><br><span class="line">       x = self.drop(x)</span><br><span class="line">    x = self.fc1(x)</span><br><span class="line">		x = F.relu(x)</span><br><span class="line">		<span class="comment"># Output Layer</span></span><br><span class="line">		<span class="comment"># Input dimension (50) # Output dimension (3) </span></span><br><span class="line">		<span class="keyword">if</span> self.p &gt; <span class="number">0</span>:</span><br><span class="line">       x = self.drop(x)</span><br><span class="line">    x = self.fc2(x)</span><br><span class="line"><span class="keyword">return</span> x</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>dropout是如何工作的？</p>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">		x = self.featurizer(x) </span><br><span class="line">		x = self.classifier(x) </span><br><span class="line">		<span class="keyword">return</span> x</span><br></pre></td></tr></table></figure>
+
+<p>它接收的输入参数是一个小批量图像数据，先执行featurizer函数，然后执行输出特征张量的classifier，它会输出三个logins，每个对应一个类型。</p>
+<h2 id="Dropout"><a href="#Dropout" class="headerlink" title="Dropout"></a>Dropout</h2><p>Dropout 是深度学习模型的重要组成部分。它用作正则化器;也就是说，它试图通过强制模型找到多种方法来实现目标来防止过度拟合。</p>
+<p>正则化背后的一般思想是，如果不加以控制，模型将试图找到实现目标的“简单方法”。这是什么意思？这意味着它最终可能会依赖于少数特征，因为发现这些特征在训练集中更相关。也许他们是，也许他们不是——这很可能是统计上的侥幸，谁知道呢，对吧？</p>
+<p>为了使模型更加健壮，一些特征被随机拒绝，因此它必须以不同的方式实现目标。它使训练更加困难，但它应该导致更好的泛化;也就是说，模型在处理看不见的数据（如验证集中的数据点）时应该表现得更好。</p>
+<p>整个过程看起来很像随机森林中用于执行拆分的特征的随机化。每个树，甚至更好的是，每个分割只能访问要素的子集。</p>
+<blockquote>
+<p>这个“功能随机化”如何在深度学习模型中发挥作用？</p>
+</blockquote>
+<p>为了说明这一点，让我们用单个nn.Dropout层构建一个顺序模型：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dropping_model = nn.Sequential(nn.Dropout(p=<span class="number">0.5</span>))</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>“为什么我需要一个模型来做这个？ 我不能改用功能形式F.dropout()吗？”</p>
+</blockquote>
+<p>是的，功能性Dropout在这里也可以运行良好，但我也想说明另一点，所以请原谅我。让我们也创建一些整齐间隔的点，以便更容易理解辍学的影响。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">spaced_points = torch.linspace(<span class="number">.1</span>, <span class="number">1.1</span>, <span class="number">11</span>)</span><br><span class="line">spaced_points</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.1000</span>, <span class="number">0.2000</span>, <span class="number">0.3000</span>, <span class="number">0.4000</span>, <span class="number">0.5000</span>, <span class="number">0.6000</span>, <span class="number">0.7000</span>,</span><br><span class="line">          <span class="number">0.8000</span>, <span class="number">0.9000</span>, <span class="number">1.0000</span>, <span class="number">1.1000</span>])</span><br></pre></td></tr></table></figure>
+
+<p>接下来，让我们用这些数据点作为我们简单模型的输入：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">44</span>)</span><br><span class="line">dropping_model.train()</span><br><span class="line">output_train = dropping_model(spaced_points)</span><br><span class="line">output_train</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.0000</span>, <span class="number">0.4000</span>, <span class="number">0.0000</span>, <span class="number">0.8000</span>, <span class="number">0.0000</span>, <span class="number">1.2000</span>, <span class="number">1.4000</span>,</span><br><span class="line">          <span class="number">1.6000</span>, <span class="number">1.8000</span>, <span class="number">0.0000</span>, <span class="number">2.2000</span>])</span><br></pre></td></tr></table></figure>
+
+<p>这里有很多需要注意的地方：</p>
+<ul>
+<li>模型是在训练模式下，这很重要，记住这一点。</li>
+<li>因为这个模型没有任何权重，因此它变得很清晰，dropout回丢弃输出参数而不是权重。</li>
+<li>它只丢弃了四个权重。</li>
+<li>剩余的元素现在有了不同的结果。</li>
+</ul>
+<blockquote>
+<p>这里发生什么事了?</p>
+</blockquote>
+<p>首先，这里的丢弃是有概率的，所以每个输入参数有50%的概率被丢弃。在我们的小例子中，只有十分之四的机率被丢弃。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fc923d3a5-7fb8-40b4-80e7-07d5d3d95f97%2FIMG_0248.jpeg?table=block&id=7347fb90-27d8-4c55-be08-8de49ebb4a81&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1870&userId=&cache=v2"></p>
+<p>其次，剩余的元素需要按比例调整1&#x2F;p。在我们的例子中，这是两个因素。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">output_train / spaced_points</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.</span>, <span class="number">2.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">0.</span>, <span class="number">2.</span>, <span class="number">2.</span>, <span class="number">2.</span>, <span class="number">2.</span>, <span class="number">0.</span>, <span class="number">2.</span>])</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>为什么？</p>
+</blockquote>
+<p>这种调整的目的是保持（或至少试图）“遭受”丢弃的特定层中输出的总体水平。因此，让我们假设这些输入（被Dropout后）将提供一个线性层，出于教学目的，它们的所有权重都设置为1（偏差等于零）。如你所知，一个线性层会将这些权重乘以（被Dropout的）输入，并将它们相加：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">F.linear(output_train,weight=torch.ones(<span class="number">11</span>),bias=torch.tensor(<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">9.4000</span>)</span><br></pre></td></tr></table></figure>
+
+<p>总和是9.4。如果没有调整系数，将是其一半（4.7）。</p>
+<blockquote>
+<p>“好吧，那又怎样？无论如何，我为什么需要保持输出水平？”</p>
+</blockquote>
+<p>因为评估模型不会执行Dropout！我们过去曾简要讨论过它——Dropout本质上是随机的，所以它会对相同的输入产生略微（或可能不会那么轻微）不同的预测。你不想那样，那是不好。因此，让我们将我们的模型设置为评估模式（这就是为什么我选择使其成为一个模型，而不是使用功能函数），看看那里会发生什么：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">dropping_model.<span class="built_in">eval</span>()</span><br><span class="line">output_eval = dropping_model(spaced_points)</span><br><span class="line">output_eval</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">0.1000</span>, <span class="number">0.2000</span>, <span class="number">0.3000</span>, <span class="number">0.4000</span>, <span class="number">0.5000</span>, <span class="number">0.6000</span>, <span class="number">0.7000</span>,</span><br><span class="line">          <span class="number">0.8000</span>, <span class="number">0.9000</span>, <span class="number">1.0000</span>, <span class="number">1.1000</span>])</span><br></pre></td></tr></table></figure>
+
+<p>很无聊，对吧？这什么都没做！</p>
+<p>输入参数穿过各层后，会有什么影响呢？线性层接收这些值后，仍然会将他们与权重相乘并相加：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">F.linear(output_eval, weight=torch.ones(<span class="number">11</span>), bias=torch.tensor(<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果为</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">6.6000</span>)</span><br></pre></td></tr></table></figure>
+
+<p>这是所有输入的合计（因为所有的权重被设置为1并且没有输入被丢弃）。如果有一个没有调整的因子，在评估模型中的输出和在训练模型中的将会不同，因为在评估模型中将有更多的参数被加上。</p>
+<blockquote>
+<p>“我仍然不明白……如果不调整，输出将是4.7，这比调整后的9.4更接近6.6……什么意思？“</p>
+</blockquote>
+<p>发生这种情况是因为丢弃是有概率的，之后十分之四的元素被丢弃了。该因子根据掉落元素的平均数量进行调整。 我们将概率设置为50%，因此，平均而言，五个元素将被丢弃。 顺便说一下，如果您将种子更改为45并重新运行代码，它实际上将丢弃一半的输入，调整后的输出将是6.4而不是9.4。</p>
+<p>与其设置不同的随机种子并手动检查其产生的值，不如生成1000个场景并计算调整后掉落输出的总和，以获得其分布：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">17</span>)</span><br><span class="line">p = <span class="number">0.5</span></span><br><span class="line">distrib_outputs = torch.tensor([</span><br><span class="line">    F.linear(F.dropout(spaced_points, p=p),</span><br><span class="line">             weight=torch.ones(<span class="number">11</span>), bias=torch.tensor(<span class="number">0</span>))</span><br><span class="line"><span class="keyword">for</span> _ <span class="keyword">in</span> <span class="built_in">range</span>(<span class="number">1000</span>) ])</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fb0678da7-ea3f-489c-a186-b21ff9b74410%2FIMG_0249.jpeg?table=block&id=a408b572-ad06-4104-9845-fd27d60da41d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1020&userId=&cache=v2"></p>
+<p>上图向我们表明，对于这组输入，我们被Dropout的简单线性层的输出将不再完全是6.6，而是介于0到12之间。不过，所有场景的平均值都非常接近6.6。</p>
+<p>dropout不仅会丢弃一些输入，而且由于其概率性质，会产生输出的分布。换句话说，该模型需要学习如何处理以如果没有dropout，输出将具有的值为中心的值分布。</p>
+<p>此外，dropout概率的选择决定了输出的分布程度。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F5e50bf94-d259-4f59-adc3-5b75d0374fa9%2FIMG_0250.jpeg?table=block&id=8c104ab5-6a76-48a4-ab78-31f2c71707e3&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1860&userId=&cache=v2"></p>
+<p>在左边，如果几乎没有任何Dropout（p&#x3D;0.10），调整后的输出之和紧密地分布在平均值周围。对于更典型的Dropout概率（如30%或50%），分布可能需要一些更极端的值。</p>
+<p>如果我们走极端，比如90%的Dropout概率，分布会变得有点退化——它几乎无处不在。</p>
+<blockquote>
+<p>输出分布的方差随着dropout概率的增加而增加。</p>
+</blockquote>
+<p>较高的dropout概率使您的模型更难学习——这就是正则化的作用。</p>
+<p>我可以在卷积层中使用dropout吗？</p>
+<blockquote>
+</blockquote>
+<h3 id="二维Dropout"><a href="#二维Dropout" class="headerlink" title="二维Dropout"></a>二维Dropout</h3><p>是的，你可以，但是不是那种Dropout。有一种特殊的dropout用于卷积层：n.Dropout2d。这个dropout的输出有点不同：区别于丢弃单独的输入值（是给定通道的像素值），它将会丢弃整个通道&#x2F;过滤器。所以，如果一个卷积层产生了十个过滤器，一个二维的有50%概率的dropout将丢弃五个过滤器（平均而言），剩下的过滤器将拥有全部的像素值。</p>
+<blockquote>
+<p>为什么它要丢失整个的通道而不是丢弃像素值呢？</p>
+</blockquote>
+<p>随机的丢弃像素并不规范，因为相邻的像素与被丢弃的像素有很强的相关性。也就是说，它们非常相似。你可以这样想：如果有一些“死掉的”像素随机的散布在一个图像中，那些丢失的像素可能会很容易的被相邻的像素填充。换句话说，如果一个完整的通道（在一个RGB图像中的）被丢弃，颜色就会改变。</p>
+<p>下图说明了常规和二维dropout对我们数据集图像的影响。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fd2cd9f75-adb8-4486-8f07-9d53f4a07ee4%2FIMG_0251.jpeg?table=block&id=d8ec98d9-4659-403c-ab57-246e1744add2&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1660&userId=&cache=v2"></p>
+<p>当然，在更深的层中，通道和颜色之间不再对应，但每个通道仍然编码一些功能。通过随机丢弃一些通道，二维dropout实现了所需的正则化。</p>
+<p>现在，让我们通过将其dropout概率设置为30%并观察其表现来让我们的模型更难学习……</p>
+<h2 id="模型配置"><a href="#模型配置" class="headerlink" title="模型配置"></a>模型配置</h2><p>配置部分简短而直接：我们创建一个模型、一个损失函数和一个优化器。</p>
+<p>该模型将是我们CNN2类的实例，有五个过滤器，dropout概率为30%。我们的数据集有三个类，所以我们使用nn.CrossEntropyLoss()（它将采用我们模型生成的三个逻辑）。</p>
+<h3 id="优化器"><a href="#优化器" class="headerlink" title="优化器"></a>优化器</h3><p>关于优化器，让我们放弃SGD优化器，使用Adam进行更改。正如我们在第0章中学到的那样，随机梯度下降是简单而直接的，但它也很慢。到目前为止，SGD的训练速度还不是问题，因为我们的问题非常简单。但是，随着我们的模型变得更加复杂，我们可以从选择不同的优化器中受益。</p>
+<p>自适应矩估计（Adam）使用自适应学习率，计算每个</p>
+<p>参数的学习率。是的，你读对了：每个参数都有自己的学习率！</p>
+<p>如果深入研究Adam优化器的state_dict（），会发现张量形状像模型中每个层的参数，Adam将使用这些参数来计算相应的学习率。</p>
+<p>众所周知，Adam能快速取得好成绩，并且可能是优化器的安全选择。</p>
+<h3 id="学习率"><a href="#学习率" class="headerlink" title="学习率"></a>学习率</h3><p>我们需要记住的另一件事是，0.1不会再作为学习率。还记得当学习率太高时会发生什么吗？损失不会下降，甚至更糟糕的是，不会上升！我们需要比这更低，低得多。在这个例子中，让我们使用3e-4。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line">model_cnn2 = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.3</span>)</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_cnn2 = optim.Adam(model_cnn2.parameters(), lr=<span class="number">3e-4</span>)</span><br></pre></td></tr></table></figure>
+
+<h2 id="模型训练"><a href="#模型训练" class="headerlink" title="模型训练"></a>模型训练</h2><p>这次我们继续使用StepBystep类来进行模型训练。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn2 = StepByStep(model_cnn2, multi_loss_fn, optimizer_cnn2)</span><br><span class="line">sbs_cnn2.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_cnn2.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>模型的训练时间会长一点，因为它的参数更多了。完成训练之后，我们看看损失的下降曲线。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = sbs_cnn2.plot_losses()</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fbf80e5f7-6814-4b84-9ab9-e6e9be43a80e%2FIMG_0252.jpeg?table=block&id=f7c7da0c-b271-4622-991b-29fb50166c89&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1950&userId=&cache=v2"></p>
+<h3 id="精度"><a href="#精度" class="headerlink" title="精度"></a>精度</h3><p>我们同样可以计算模型每个类型的精确度。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader, sbs_cnn2.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[ <span class="number">92</span>, <span class="number">124</span>],</span><br><span class="line">          [<span class="number">106</span>, <span class="number">124</span>],</span><br><span class="line">          [<span class="number">115</span>, <span class="number">124</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>这个模型在372个数据中获得了313个正确数据，正确率是84%。</p>
+<h3 id="正则化效应"><a href="#正则化效应" class="headerlink" title="正则化效应"></a>正则化效应</h3><p>Dropout层用于正则化；也就是说，他们应该减少过度拟合并改善概括性。让我们（经验上）通过训练一个排除了Dropout的，在各方面都相同的模型来验证这一概念，并将其损失和准确性与原始模型进行比较。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line"><span class="comment"># Model Configuration</span></span><br><span class="line">model_cnn2_nodrop = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.0</span>) multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>) optimizer_cnn2_nodrop = optim.Adam(</span><br><span class="line">      model_cnn2_nodrop.parameters(), lr=<span class="number">3e-4</span></span><br><span class="line">  )</span><br><span class="line"><span class="comment"># Model Training</span></span><br><span class="line">sbs_cnn2_nodrop = StepByStep(</span><br><span class="line">      model_cnn2_nodrop, multi_loss_fn, optimizer_cnn2_nodrop</span><br><span class="line">  )</span><br><span class="line">sbs_cnn2_nodrop.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_cnn2_nodrop.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>我们把这些损失值变化放到一起来进行比较。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa17b6c25-6474-48d6-9947-b5f32f52a698%2FIMG_0253.jpeg?table=block&id=706f6274-d976-4af5-9701-d86c07aeb9b2&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1910&userId=&cache=v2"></p>
+<p>这实际上很好地描述了使用Dropout的正则化效果：</p>
+<ul>
+<li>Dropout会使训练损失更高——毕竟，Dropout会使训练更加困难。</li>
+<li>验证损失随着Dropout而降低——这意味着模型正在更好地概括，并在看不见的数据上实现更好的性能，这就是使用像Dropout这样的正则化方法的全部意义。</li>
+</ul>
+<p>我们还可以通过查看集合和模型的准确性来观察这种效果。首先，无Dropout模型，预计会过度适应训练数据：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(StepByStep.loader_apply(</span><br><span class="line">train_loader, sbs_cnn2_nodrop.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>),</span><br><span class="line">        StepByStep.loader_apply(</span><br><span class="line">            val_loader, sbs_cnn2_nodrop.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">2518</span>, <span class="number">2520</span>]) tensor([<span class="number">293</span>, <span class="number">372</span>])</span><br></pre></td></tr></table></figure>
+
+<p>训练套装的准确率为99.92%！还有78.76%的验证集——它看起来像是过度拟合了！然后，让我们看看模型的正则化版本：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(StepByStep.loader_apply(</span><br><span class="line">train_loader, sbs_cnn2.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>),</span><br><span class="line">        StepByStep.loader_apply(</span><br><span class="line">            val_loader, sbs_cnn2.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">2504</span>, <span class="number">2520</span>]) tensor([<span class="number">313</span>, <span class="number">372</span>])</span><br></pre></td></tr></table></figure>
+
+<p>训练套装的准确率为99.36%——仍然相当高！但我们现在在验证集上获得了84.13%——在训练和验证准确性之间缩小差距总是一个好兆头。您还可以尝试不同的Dropout概率，并观察并得到好得多（或更糟！）结果。</p>
+<h3 id="图像化过滤器"><a href="#图像化过滤器" class="headerlink" title="图像化过滤器"></a>图像化过滤器</h3><p>模型中有两个卷积层，让我们把它用图像显示出来。对于第一个卷积:</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">model_cnn2.conv1.weight.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.Size([<span class="number">5</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">3</span>])</span><br></pre></td></tr></table></figure>
+
+<p>形状显示，它对输入的三个通道，每个都生成了五个过滤器（一共十五个过滤器）</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = sbs_cnn2.visualize_filters(<span class="string">&#x27;conv1&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fdbc91f76-3166-44b2-87e6-33dd4c00bc0c%2FIMG_0254.jpeg?table=block&id=c370c4c0-a9f1-4b0f-8e6f-171ecc054a08&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1180&userId=&cache=v2"></p>
+<p>对于第二个卷积层，我们得到的是</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">model_cnn2.conv2.weight.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.Size([<span class="number">5</span>, <span class="number">5</span>, <span class="number">3</span>, <span class="number">3</span>])</span><br></pre></td></tr></table></figure>
+
+<p>从形状可以看出，它为输入的五个通道，每个都生成了五个过滤器，每个都是3*3像素：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fec8bed02-7aa0-487b-8315-0082393d2949%2FIMG_0255.jpeg?table=block&id=0fc673c7-072f-440d-afd2-2a6c373d23bb&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1860&userId=&cache=v2"></p>
+<h2 id="学习率-1"><a href="#学习率-1" class="headerlink" title="学习率"></a>学习率</h2><p>是时候谈谈学习率了。毫无疑问，学习率是最重要的超参数，它驱动了参数的更新，也就是说，它驱动了模型学习的速度。</p>
+<p>给一个给定模型选择一个合适的学习率是一项困难的任务，需要通过不断是测试和发现错误的过程来找到一个合适的学习率，因为没有一个固定的方法可以找到很快找到一个最优的学习率。我们唯一可以确定的是，它应该小于1.0并且会高于1e-6。</p>
+<blockquote>
+<p>嗯，着没有多大的帮助。。。。</p>
+</blockquote>
+<p>确实没有。所以，我们来讨论一下如何让它更有具体一点。</p>
+<p>在前面的章节中，我们使用0.1作为学习率，这是一个高学习率但是在处理简单问题时运行良好。当模型变得越来越复杂时，这个值绝对是太高了，低一个数量级（0.01）是一个更好的起点。</p>
+<blockquote>
+<p>如果这个学习率还是很高，并且损失不下降呢？</p>
+</blockquote>
+<p>这真的是可能的，一个可能的解决方法是执行一个网格查询，在每个训练迭代中尝试多个学习率，并比较损失的演变。从计算上讲，这很昂贵，因为您需要多次训练模型，但如果您的模型不是太大，它仍然可能是可行的。</p>
+<blockquote>
+<p>我该如何为网格查询选择合适的值？</p>
+</blockquote>
+<p>通常将学习率降低3倍或10倍。因此，您的学习率值很可能是[0.1，0.03，0.01，3e-3，1e-3，3e-4，1e-4]（使用3的系数）或[0.1，0.01，1e-3，1e-4，1e-5]（使用10的系数）。一般来说，如果你根据他们的相应损失来绘制学习率，这就是你可以期待的：</p>
+<ul>
+<li>如果学习率太低，模型不会学到什么，并且损失值会一直很高。</li>
+<li>如果学习率设置的太高，模型不会收敛，损失值依然很高。</li>
+<li>在这两个极端之间，损失应该更低，暗示学习率的正确数量级。</li>
+</ul>
+<h3 id="寻找LR"><a href="#寻找LR" class="headerlink" title="寻找LR"></a>寻找LR</h3><p>事实证明，您不必像那样网格搜索学习率。2017年，Leslie N.史密斯出版了《训练神经网络的周期性学习率》[101]，其中他概述了快速找到初始学习率适当范围的程序（稍后将详细介绍他的论文的周期性部分！）。这项技术被称为LR范围测试，这是一个非常简单的解决方案，可以帮助您获得对适当学习率的首次估计。</p>
+<p>一般的想法与网格搜索基本相同：它尝试多个学习率并记录相应的损失。但区别在这里：它评估单个迷你批量的损失，然后在进入下一个迷你批量之前更改学习率。</p>
+<p>这在计算上很便宜（它只为每个候选值执行一个训练步骤），并且可以在相同的培训循环内执行。</p>
+<blockquote>
+<p>等一下！结果不会受到之前使用不同学习率执行的训练步骤的影响吗？</p>
+</blockquote>
+<p>嗯，从技术上讲，是的。但这没什么大不了的：首先，我们正在寻找学习率的大致估计值，而不是精确的值；其次，这些更新几乎不会将模型从初始状态中推开。忍受这种差异比每次都重置模型更容易。</p>
+<p>首先，我们需要定义测试的边界（start_lr和end_lr）和迭代次数（num_iter）从一个移动到另一个。除此之外，我们可以选择改变增量的方法：线性或指数。让我们构建一个高阶函数，该函数接受所有这些参数并返回另一个函数，该函数返回给定当前迭代数的乘法因子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">make_lr_fn</span>(<span class="params">start_lr, end_lr, num_iter, step_mode=<span class="string">&#x27;exp&#x27;</span></span>):</span><br><span class="line">		<span class="keyword">if</span> step_mode == <span class="string">&#x27;linear&#x27;</span>:</span><br><span class="line">				factor = (end_lr / start_lr - <span class="number">1</span>) / num_iter </span><br><span class="line">				<span class="keyword">def</span> <span class="title function_">lr_fn</span>(<span class="params">iteration</span>):</span><br><span class="line">						<span class="keyword">return</span> <span class="number">1</span> + iteration * factor </span><br><span class="line">		<span class="keyword">else</span>:</span><br><span class="line">				factor = (np.log(end_lr) - np.log(start_lr)) / num_iter </span><br><span class="line">				<span class="keyword">def</span> <span class="title function_">lr_fn</span>(<span class="params">iteration</span>):</span><br><span class="line">						<span class="keyword">return</span> np.exp(factor)**iteration </span><br><span class="line">		<span class="keyword">return</span> lr_fn</span><br></pre></td></tr></table></figure>
+
+<p>现在，假设我们打算尝试从0.01到0.1之间的10种不同的学习率：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">start_lr = <span class="number">0.01</span></span><br><span class="line">end_lr = <span class="number">0.1</span></span><br><span class="line">num_iter = <span class="number">10</span></span><br><span class="line">lr_fn = make_lr_fn(start_lr, end_lr, num_iter, step_mode=<span class="string">&#x27;exp&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>两个比率之间有10的系数。 如果我们将此函数应用于迭代数序列，从0到10，这就是我们得到的:</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">lr_fn(np.arange(num_iter + <span class="number">1</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">array([ <span class="number">1.</span>        ,  <span class="number">1.25892541</span>,  <span class="number">1.58489319</span>,  <span class="number">1.99526231</span>,</span><br><span class="line">          <span class="number">2.51188643</span>,  <span class="number">3.16227766</span>,  <span class="number">3.98107171</span>,  <span class="number">5.01187234</span>,</span><br><span class="line">          <span class="number">6.30957344</span>,  <span class="number">7.94328235</span>, <span class="number">10.</span>        ]</span><br></pre></td></tr></table></figure>
+
+<p>如果我们将这些值乘以初始学习率，我们将得到一系列学习率，从0.01到0.1不等：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">start_lr * lr_fn(np.arange(num_iter + <span class="number">1</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">array([<span class="number">0.01</span>      , <span class="number">0.01258925</span>, <span class="number">0.01584893</span>, <span class="number">0.01995262</span>,</span><br><span class="line">         <span class="number">0.02511886</span>, <span class="number">0.03162278</span>, <span class="number">0.03981072</span>, <span class="number">0.05011872</span>,</span><br><span class="line">         <span class="number">0.06309573</span>, <span class="number">0.07943282</span>, <span class="number">0.1</span>       ])</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>酷，但是如果我修改一个优化器的学习率呢？</p>
+</blockquote>
+<p>很高兴你问了！ 事实证明，我们可以将调度器分配给优化器，这样它就会随时更新学习率。 我们将在几个部分中更深入地研究学习率调度器。 目前，只需知道我们可以使用接受自定义函数的调度器使其遵循上述值序列即可。 巧合？ 我不这么认为！ 这就是我们将使用lr_fn()的原因：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">dummy_model = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.3</span>)</span><br><span class="line">dummy_optimizer = optim.Adam(dummy_model.parameters(), lr=start_lr)</span><br><span class="line">dummy_scheduler = LambdaLR(dummy_optimizer, lr_lambda=lr_fn)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>LambdaLR调度器将优化器和自定义函数作为参数，并相应地修改该优化器的学习率。然而，要做到这一点，我们需要调用调度器的step()方法，但只有在调用优化器自己的step()方法之后：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dummy_optimizer.step()</span><br><span class="line">dummy_scheduler.step()</span><br></pre></td></tr></table></figure>
+
+<p>执行一步后，学习率应该已经更新，以匹配我们数组中的第二个值（0.01258925）。让我们使用调度器的get_last_lr()方法仔细检查一下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_scheduler.get_last_lr()[<span class="number">0</span>]</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">0.012589254117941673</span></span><br></pre></td></tr></table></figure>
+
+<p>完美！ 现在让我们构建实际范围测试：</p>
+<ul>
+<li>由于我们将更新模型和优化器，我们需要存储它们的初始状态，以便它们最终可以恢复。</li>
+<li>创建自定义函数和相应的调度器，就像在上面的片段。</li>
+<li>（重新）在小批次上实现培训循环，这样我们就可以记录学习每一步的速率和损失。</li>
+<li>恢复模型和优化器状态。</li>
+</ul>
+<p>此外，由于我们使用单个小批次来评估损失，因此产生的值可能会上下跳出很多。因此，最好使用指数加权移动平均线（EWMA）（我们将在下一节更详细地讨论EWMA）来平滑曲线，以便更容易识别值中的趋势。</p>
+<p>代码如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">lr_range_test</span>(<span class="params">self, data_loader, end_lr, num_iter=<span class="number">100</span>,</span></span><br><span class="line"><span class="params">								    step_mode=<span class="string">&#x27;exp&#x27;</span>, alpha=<span class="number">0.05</span>, ax=<span class="literal">None</span></span>):</span><br><span class="line">			<span class="comment"># The test updates both model and optimizer, so we need to </span></span><br><span class="line">			<span class="comment"># store their initial states to restore them in the end </span></span><br><span class="line">			previous_states = &#123;</span><br><span class="line">          <span class="string">&#x27;model&#x27;</span>: deepcopy(self.model.state_dict()),</span><br><span class="line">          <span class="string">&#x27;optimizer&#x27;</span>: deepcopy(self.optimizer.state_dict())</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment"># Retrieves the learning rate set in the optimizer</span></span><br><span class="line">      start_lr = self.optimizer.state_dict()[<span class="string">&#x27;param_groups&#x27;</span>][<span class="number">0</span>][<span class="string">&#x27;lr&#x27;</span>]</span><br><span class="line">      <span class="comment"># Builds a custom function and corresponding scheduler</span></span><br><span class="line">      lr_fn = make_lr_fn(start_lr, end_lr, num_iter)</span><br><span class="line">      scheduler = LambdaLR(self.optimizer, lr_lambda=lr_fn)</span><br><span class="line">      <span class="comment"># Variables for tracking results and iterations</span></span><br><span class="line">      tracking = &#123;<span class="string">&#x27;loss&#x27;</span>: [], <span class="string">&#x27;lr&#x27;</span>: []&#125;</span><br><span class="line">      iteration = <span class="number">0</span></span><br><span class="line">			<span class="comment"># If there are more iterations than mini-batches in the data </span></span><br><span class="line">			<span class="comment"># loader, it will have to loop over it more than once</span></span><br><span class="line">			<span class="keyword">while</span> (iteration &lt; num_iter):</span><br><span class="line">					<span class="comment"># That&#x27;s the typical mini-batch inner loop</span></span><br><span class="line">					<span class="keyword">for</span> x_batch, y_batch <span class="keyword">in</span> data_loader: </span><br><span class="line">							x_batch = x_batch.to(self.device) </span><br><span class="line">							y_batch = y_batch.to(self.device) </span><br><span class="line">							<span class="comment"># Step 1</span></span><br><span class="line">							yhat = self.model(x_batch)</span><br><span class="line">							<span class="comment"># Step 2</span></span><br><span class="line">							loss = self.loss_fn(yhat, y_batch) </span><br><span class="line">							<span class="comment"># Step 3</span></span><br><span class="line">							loss.backward()</span><br><span class="line">							<span class="comment"># Here we keep track of the losses (smoothed)</span></span><br><span class="line">							<span class="comment"># and the learning rates </span></span><br><span class="line">							tracking[<span class="string">&#x27;lr&#x27;</span>].append(scheduler.get_last_lr()[<span class="number">0</span>]) </span><br><span class="line">							<span class="keyword">if</span> iteration == <span class="number">0</span>:</span><br><span class="line">									tracking[<span class="string">&#x27;loss&#x27;</span>].append(loss.item()) </span><br><span class="line">							<span class="keyword">else</span>:</span><br><span class="line">                  prev_loss = tracking[<span class="string">&#x27;loss&#x27;</span>][-<span class="number">1</span>]</span><br><span class="line">                  smoothed_loss = (alpha * loss.item() +</span><br><span class="line">                                  (<span class="number">1</span>-alpha) * prev_loss)</span><br><span class="line">                  tracking[<span class="string">&#x27;loss&#x27;</span>].append(smoothed_loss)</span><br><span class="line">							iteration += <span class="number">1</span></span><br><span class="line">							<span class="comment"># Number of iterations reached </span></span><br><span class="line">							<span class="keyword">if</span> iteration == num_iter:</span><br><span class="line">									<span class="keyword">break</span></span><br><span class="line">							<span class="comment"># Step 4</span></span><br><span class="line">              self.optimizer.step()</span><br><span class="line">              scheduler.step()</span><br><span class="line">              self.optimizer.zero_grad()</span><br><span class="line">      <span class="comment"># Restores the original states</span></span><br><span class="line">      self.optimizer.load_state_dict(previous_states[<span class="string">&#x27;optimizer&#x27;</span>])</span><br><span class="line">      self.model.load_state_dict(previous_states[<span class="string">&#x27;model&#x27;</span>])</span><br><span class="line">			<span class="keyword">if</span> ax <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">					fig, ax = plt.subplots(<span class="number">1</span>, <span class="number">1</span>, figsize=(<span class="number">6</span>, <span class="number">4</span>))</span><br><span class="line">			<span class="keyword">else</span>:</span><br><span class="line">					fig = ax.get_figure()</span><br><span class="line">			ax.plot(tracking[<span class="string">&#x27;lr&#x27;</span>], tracking[<span class="string">&#x27;loss&#x27;</span>]) </span><br><span class="line">			<span class="keyword">if</span> step_mode == <span class="string">&#x27;exp&#x27;</span>:</span><br><span class="line">					ax.set_xscale(<span class="string">&#x27;log&#x27;</span>)</span><br><span class="line">					ax.set_xlabel(<span class="string">&#x27;Learning Rate&#x27;</span>) </span><br><span class="line">					ax.set_ylabel(<span class="string">&#x27;Loss&#x27;</span>) </span><br><span class="line">					fig.tight_layout()</span><br><span class="line">					<span class="keyword">return</span> tracking, fig</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;lr_range_test&#x27;</span>, lr_range_test)</span><br></pre></td></tr></table></figure>
+
+<p>由于技术上应该应用于未经训练的模型，我们创建一个新模型（和优化器）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line">new_model = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.3</span>)</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">new_optimizer = optim.Adam(new_model.parameters(), lr=<span class="number">3e-4</span>)</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们创建一个StepByStep的实例，并使用训练数据加载器调用新方法，学习速率的上限（end_lr），以及我们希望它尝试多少次迭代：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_new = StepByStep(new_model, multi_loss_fn, new_optimizer)</span><br><span class="line">tracking, fig = sbs_new.lr_range_test(</span><br><span class="line">train_loader, end_lr=<span class="number">1e-1</span>, num_iter=<span class="number">100</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8d3d13af-db97-45fe-a91a-854d32e45938%2FIMG_0256.jpeg?table=block&id=8655f564-77f3-489f-b7c9-346518294d4c&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=990&userId=&cache=v2"></p>
+<p>我们得到了：一条“U”形曲线。显然，Karpathy常数（3e-4）对于我们的模型来说太低了。曲线的下降部分是我们应该瞄准的区域：大约0.01左右。</p>
+<p>这意味着我们本可以使用更高的学习率，如0.005，来训练我们的模型。但这也意味着我们需要重新创建优化器，并在sbs_new中更新它。首先，让我们创建一个设置其优化器的方法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">set_optimizer</span>(<span class="params">self, optimizer</span>): </span><br><span class="line">		self.optimizer = optimizer</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;set_optimizer&#x27;</span>, set_optimizer)</span><br></pre></td></tr></table></figure>
+
+<p>然后，我们创建并设置新的优化器，并像往常一样训练模型：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">new_optimizer = optim.Adam(new_model.parameters(), lr=<span class="number">0.005</span>)</span><br><span class="line">sbs_new.set_optimizer(new_optimizer)</span><br><span class="line">sbs_new.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_new.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果你尝试一下，你会发现训练损失实际上下降得更快一些（而且模型可能过拟合了）。</p>
+<blockquote>
+<p>免责声明：学习率查找器肯定不是魔法！ 有时你不会得到“U”形曲线：也许初始学习率（在优化器中定义）已经太高了，或者也许end_lr太低了。 即使您这样做了，也不一定意味着下降部分的中点会为您提供模型最快的学习率。</p>
+</blockquote>
+<blockquote>
+<p>“好吧，如果我从一开始就设法选择一个好的学习率，我完成了吗？”</p>
+</blockquote>
+<p>对不起，但是不！ 好吧，这取决于具体情况。对于更简单（但真实的，不是玩具）的问题，这可能很好。 这里的问题是，对于较大的模型，损失表面（还记得，从第0章开始吗？） 变得非常混乱，在模型训练开始时效果良好的学习率可能太高，不适合模型训练的后期阶段。 这意味着学习率需要改变或适应。</p>
+<h3 id="LRFinder"><a href="#LRFinder" class="headerlink" title="LRFinder"></a>LRFinder</h3><p>我们上面实现的功能是相当基本的。对于具有更多工具的实现，请查看此Python软件包：torch_lr_finder。[102]我在这里说明了它的用法，这与我们上面所做的非常相似，但有关更多详细信息，请参阅文档。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">!pip install --quiet torch-lr-finder </span><br><span class="line"><span class="keyword">from</span> torch_lr_finder <span class="keyword">import</span> LRFinder</span><br></pre></td></tr></table></figure>
+
+<p>我们需要先使用典型的模型配置对象（模型、优化器、丢失函数和设备）创建LRFinder的实例，而不是直接调用函数。然后，我们可以使用range_test()方法进行旋转，为其提供熟悉的参数：数据加载器、学习率的上限和迭代次数。Reset()方法恢复模型和优化器的原始状态：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">11</span>)</span><br><span class="line">new_model = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.3</span>)</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>) </span><br><span class="line">new_optimizer = optim.Adam(new_model.parameters(), lr=<span class="number">3e-4</span>) </span><br><span class="line">device = <span class="string">&#x27;cuda&#x27;</span> <span class="keyword">if</span> torch.cuda.is_available() <span class="keyword">else</span> <span class="string">&#x27;cpu&#x27;</span></span><br><span class="line">lr_finder = LRFinder(</span><br><span class="line">      new_model, new_optimizer, multi_loss_fn, device=device</span><br><span class="line">  )</span><br><span class="line">lr_finder.range_test(train_loader, end_lr=<span class="number">1e-1</span>, num_iter=<span class="number">100</span>)</span><br><span class="line">lr_finder.plot(log_lr=<span class="literal">True</span>)</span><br><span class="line">lr_finder.reset()</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F34ff6892-6682-47cf-99b3-a5048c257085%2FIMG_0257.jpeg?table=block&id=a10e98e9-2daf-4022-8e28-a3927dc82d18&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1010&userId=&cache=v2"></p>
+<p>不完全是“U”形，但我们仍然可以分辨出1e-2是一个很好的起点。</p>
+<h3 id="适应性学习率"><a href="#适应性学习率" class="headerlink" title="适应性学习率"></a>适应性学习率</h3><p>这就是Adam优化器实际上为我们所做的——它从作为参数提供的学习率开始，但它调整了学习率，以不同的方式为模型中的每个参数进行调整。</p>
+<p>说实话，Adam没有适应学习率——它确实适应了梯度。 但是，由于参数更新是由两个参数：学习率和梯度的乘法给出的，所以这是一个没有区别的区别。</p>
+<p>Adam结合了另外两个优化器的特性：SGD和RMSProp。 像前者一样，它使用梯度的移动平均线，而不是梯度本身；与后者一样，它使用平方梯度的移动平均线来缩放梯度。</p>
+<p>但这不是一个简单的平均值。 这是一个移动平均线。更进一步说，是一个指数加权移动平均线（EWMA）。</p>
+<p>然而，在深入研究EWMA之前，我们需要简要回顾一下简单的移动平均线。</p>
+<h3 id="移动平均（MA）"><a href="#移动平均（MA）" class="headerlink" title="移动平均（MA）"></a>移动平均（MA）</h3><p>要计算给定特征x在一定数量的周期内的移动平均线，我们只需要在许多时间步骤中平均观察到的值（从观察到的初始值周期-1步前一直到当前值）：</p>
+<p>$$<br>MA_t(periods,x)&#x3D;\frac{1}{periods}(x_t+x_{t-1}+…x_{t-periods+1})<br>$$</p>
+<p>但是，与计算其本身的平均值，不如计算值的平均年龄。当前值的年龄等于一个时间单位，而我们移动平均线中最古老的值的年龄等于周期单位，因此平均年龄由以下公式给出：</p>
+<p>$$<br>average \ age_{MA}&#x3D;\frac{1+2+…+periods}{periods}&#x3D;\frac{peroids+1}{2}<br>$$</p>
+<blockquote>
+<p>“为什么我们关心这些值的平均年龄？”</p>
+</blockquote>
+<p>当然，在简单移动平均线的背景下，这可能看起来有点愚蠢。但是，正如您将在下一节中看到的，EWMA不会直接在其公式中使用周期数：我们必须依靠其值的平均年龄来估计其（等效）周期数。</p>
+<blockquote>
+<p>那么为什么要使用EWMA呢？”</p>
+</blockquote>
+<h3 id="EWMA"><a href="#EWMA" class="headerlink" title="EWMA"></a>EWMA</h3><p>EWMA比传统的移动平均线更实用，因为它只有两个输入：上一步中EWMA的值和被平均的变量的当前值。有两种方式表示其公式，使用alpha或beta：</p>
+<p>$$<br>EWMA_t(\alpha,x)&#x3D;\alpha x_t+(1-\alpha)EWMA_{t-1}(\alpha,x) \<br>EWMA_t(\beta,x)&#x3D;(1-\beta)x_t+\beta EWMA_{t-1}(\beta,x)<br>$$</p>
+<p>第一个替代方案是使用alpha作为当前值的权重，在其他领域最为常见，如金融。但是，出于某种原因，测试版替代品是讨论Adam优化器时常见的替代品。</p>
+<p>让我们采取第一个替代方案，稍微扩展一下方程：</p>
+<p>$$<br>EWMA_t(\alpha,x)&#x3D;\alpha x_t +(1-\alpha)( x_{t-1}+(1-\alpha)\ EWMA_{t-2}(\alpha,x)) \<br>&#x3D;\alpha x_t +(1-\alpha)\alpha x_{t-1}+(1&#x3D;\alpha)^2 \alpha x_{t-2}+… \<br>&#x3D;(1-\alpha)^0\alpha x_t +(1-\alpha)\alpha x_{t-1}+(1-\alpha)^2 \alpha x_{t-2}+… \<br>&#x3D;\alpha((1-\alpha)^0 +(1-\alpha)^1 \ x_{t-1}+(1-\alpha)^2 \alpha x_{t-2}+…)<br>$$</p>
+<p>第一个元素以面值取，但所有剩余元素都根据其相应的滞后进行贴现。</p>
+<blockquote>
+<p>什么是滞后？</p>
+</blockquote>
+<p>它只是与当前值的距离，以时间为单位。所以特征x的值过去的一个时间单位是特征x在滞后1时的值。</p>
+<p>在计算出上述表达式后，我们最终会得到一个表达式，其中每个术语都有一个指数，这取决于相应的滞后数。我们可以用这些信息来计算总和：</p>
+<p>$$<br>EWMA_t(\alpha,x)&#x3D;\alpha \sum_{lag&#x3D;0}^{T-1}\underbrace{(1-a)^{lag}}<em>{weight} \ x</em>{t-lag}<br>$$</p>
+<p>在上面的表达式中，T是观察到的值总数。因此，EWMA会考虑每个价值，无论它过去有多远。但是，由于权重（贴现系数），一个值越老，它对总和的贡献就越少。</p>
+<blockquote>
+<p>较高的α值对应于快速收缩的权重；也就是说，较旧的值几乎没有区别。</p>
+</blockquote>
+<p>让我们看看权重是如何分布在两个平均值的滞后上的，一个alpha等于三分之一的EWMA和一个简单的五周期移动平均线。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F0a3202ee-bb81-4e91-b4a9-984b7b178637%2FIMG_0258.jpeg?table=block&id=7651914e-8307-4d86-b7a8-2dbba27b0558&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1120&userId=&cache=v2"></p>
+<p>看到区别了吗？在一个简单的移动平均线中，每个值都有相同的权重；也就是说，它们对平均值的贡献是平等的。但是，在EWMA中，较新的值比旧值具有更大的权重。</p>
+<p>看起来可能不是这样，但上面的两个平均值有一些共同点。它们值的平均年龄大致相同。酷，对吧？</p>
+<p>因此，如果五周期移动平均线中值的平均年龄为3，我们应该得出（大约）上述EWMA中值年龄的相同值。让我们理解为什么会这样。也许你还没有注意到，但零的滞后对应于一个时间单位的年龄，一个滞后对应于两个时间单位的年龄，等等。我们可以使用这些信息来计算EWMA中值的平均年龄：</p>
+<p>$$<br>average \ age_{EWMA}&#x3D;\alpha \sum_{lag&#x3D;0}^{T-1}(1-\alpha)^{lag}(lag+1) \approx \frac{1}{\alpha}<br>$$</p>
+<p>随着观测值（T）总数的增长，平均年龄接近阿尔法的倒数。不，我不在这里展示这个。是的，我正在向你展示一个代码片段，该代码片段在数字上“证明”它 :-)</p>
+<p>你可能会用T的值，徒劳地试图接近无穷大，但20个周期足以表明一个观点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">alpha = <span class="number">1</span>/<span class="number">3</span>; T = <span class="number">20</span></span><br><span class="line">t = np.arange(<span class="number">1</span>, T + <span class="number">1</span>)</span><br><span class="line">age = alpha * <span class="built_in">sum</span>((<span class="number">1</span> - alpha)**(t - <span class="number">1</span>) * t)</span><br><span class="line">age</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">2.9930832408241015</span></span><br></pre></td></tr></table></figure>
+
+<p>三个就够了，对吗？如果您不相信，请尝试使用93个周期（或更多）。</p>
+<p>现在我们知道如何计算EWMA的平均年龄，鉴于其alpha，我们可以计算出哪个（简单）移动平均平均具有相同的平均年龄：</p>
+<p>$$<br>average \ age&#x3D;\frac{periods+1}{2}&#x3D;\frac{1}{\alpha}\Rightarrow \alpha&#x3D;\frac{2}{periods+1};periods&#x3D;\frac{2}{\alpha}-1<br>$$</p>
+<p>alpha值与移动平均线的周期数之间存在简单而直接的关系。猜猜如果你插入alpha值的三分之一会发生什么？你会得到相应的周期数：五个。使用等于三分之一的alpha的EWMA对应于五个周期的移动平均线。</p>
+<p>它也相反：如果我们想计算相当于19周期移动平均线的EWMA，相应的alpha将是0.1。而且，如果我们使用基于测试版的EWMA公式，那将是0.9。同样，要计算相当于1999年期移动平均线的EWMA，alpha和beta分别为0.001和0.999。</p>
+<p>这些选择根本不是随机的：事实证明，Adam将这两个值用于其betas（一个用于梯度的移动平均线，另一个用于平方梯度的移动平均线）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">EWMA</span>(<span class="params">past_value, current_value, alpha</span>):</span><br><span class="line">		<span class="keyword">return</span> (<span class="number">1</span>- alpha) * past_value + alpha * current_value</span><br></pre></td></tr></table></figure>
+
+<p>为了在一系列值上计算它，给定一个句点，我们可以定义一个函数</p>
+<p>像这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">calc_ewma</span>(<span class="params">values, period</span>): </span><br><span class="line">		alpha = <span class="number">2</span> / (period + <span class="number">1</span>) </span><br><span class="line">		result = []</span><br><span class="line">		<span class="keyword">for</span> v <span class="keyword">in</span> values:</span><br><span class="line">				<span class="keyword">try</span>:</span><br><span class="line">						prev_value = result[-<span class="number">1</span>]</span><br><span class="line">				<span class="keyword">except</span> IndexError: </span><br><span class="line">						prev_value = <span class="number">0</span></span><br><span class="line">        new_value = EWMA(prev_value, v, alpha)</span><br><span class="line">				result.append(new_value) </span><br><span class="line">		<span class="keyword">return</span> np.array(result)</span><br></pre></td></tr></table></figure>
+
+<p>在try..except块中，你可以看到，如果EWMA没有以前的值（如第一步），它假设以前的值为零。</p>
+<p>EWMA的构建方式有其问题——因为它不需要跟踪其周期内的所有值，在第一步，“平均值”将远远偏离（或偏差）。对于alpha&#x3D;0.1（对应于19个周期的平均值），第一个“平均值”将正好是第一个值除以10。</p>
+<p>为了解决这个问题，我们可以计算偏置校正的EWMA：</p>
+<p>$$<br>Bias \ Corrected \ EWMA_x(x,\beta)&#x3D;\frac{1}{1-\beta^t}EWMA_t(x,\beta)<br>$$</p>
+<p>上述公式中的beta与以前相同：1-alpha。在代码中，我们可以像这样实现校正因子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">correction</span>(<span class="params">averaged_value, beta, steps</span>): </span><br><span class="line">		<span class="keyword">return</span> averaged_value / (<span class="number">1</span> - (beta ** steps))</span><br></pre></td></tr></table></figure>
+
+<p>为了在一系列值上计算校正后的EWMA，我们可以使用这样的函数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">calc_corrected_ewma</span>(<span class="params">values, period</span>): </span><br><span class="line">		ewma = calc_ewma(values, period)</span><br><span class="line">    </span><br><span class="line">		alpha = <span class="number">2</span> / (period + <span class="number">1</span>)</span><br><span class="line">    beta = <span class="number">1</span> - alpha</span><br><span class="line"></span><br><span class="line">		result = []</span><br><span class="line">		<span class="keyword">for</span> step, v <span class="keyword">in</span> <span class="built_in">enumerate</span>(ewma):</span><br><span class="line">          adj_value = correction(v, beta, step + <span class="number">1</span>)</span><br><span class="line">          result.append(adj_value)</span><br><span class="line">		<span class="keyword">return</span> np.array(result)</span><br></pre></td></tr></table></figure>
+
+<p>让我们将两个EWMA与正则移动平均线一起应用于一个序列温度值来说明差异：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">temperatures = np.array([<span class="number">5</span>, <span class="number">11</span>, <span class="number">15</span>, <span class="number">6</span>, <span class="number">5</span>, <span class="number">3</span>, <span class="number">3</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">2</span>, <span class="number">1</span>,</span><br><span class="line">      -<span class="number">1</span>, -<span class="number">2</span>, <span class="number">2</span>, <span class="number">2</span>, -<span class="number">2</span>, -<span class="number">1</span>, -<span class="number">1</span>, <span class="number">3</span>, <span class="number">4</span>, -<span class="number">1</span>, <span class="number">2</span>, <span class="number">6</span>, <span class="number">4</span>, <span class="number">9</span>, <span class="number">11</span>, <span class="number">9</span>, -<span class="number">2</span>])</span><br><span class="line">ma_vs_ewma(temperatures, periods=<span class="number">19</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F5ccef045-d2d2-45f1-bb0e-a07808c6daa4%2FIMG_0259.jpeg?table=block&id=d597c369-3875-47fa-be31-3d16db91a1a8&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=990&userId=&cache=v2"></p>
+<p>不出所料，没有校正的EWMA（红色虚线）在开始时很远，而正则移动平均线（黑色虚线）更接近实际值。然而，更正后的EWMA从一开始就很好地跟踪了实际值。果然，19天后，这两个EWMA几乎无法区分。</p>
+<h3 id="EWMA-满足梯度"><a href="#EWMA-满足梯度" class="headerlink" title="EWMA 满足梯度"></a>EWMA 满足梯度</h3><p>不管怎样，谁在乎温度呢？让我们将EWMA应用于我们的渐变，亚当风格！</p>
+<p>对于每个参数，我们计算两个EWMA：一个用于其梯度，另一个用于其梯度的平方。接下来，我们使用这两个值来计算该参数的适应梯度：</p>
+<p>$$<br>adapted gradient_t&#x3D;\frac{Bias \ Corrected \ EWMA_t(\beta_1,gradients)}{\sqrt{Bias \ Corrected \ EWMA_t(\beta_2,gradients^2)+\epsilon}}<br>$$</p>
+<p>公式的解释：Adam的beta1和beta2参数！其默认值0.9和0.999分别对应于19和1999年的平均值。</p>
+<p>因此，这是平滑梯度的短期平均值，也是缩放梯度的非常长期的平均值。分母（通常为1e-8）中的epsilon值只是为了防止数字问题。</p>
+<p>一旦计算了适应的梯度，它将替换参数更新中的实际梯度：</p>
+<p>$$<br>SGD: param_t&#x3D;param_{t-1}-\eta \ gradient_t \<br>Adam: param_t&#x3D;param_{t-1}-\eta \ adapted \ gradient_t \<br>$$</p>
+<p>显然，学习率（希腊字母eta）没有被触及！</p>
+<p>此外，由于缩放的结果，适应的梯度可能大部分时间都在[-3，3]范围内（这类似于标准化程序，但没有减去平均值）。</p>
+<h3 id="Adam"><a href="#Adam" class="headerlink" title="Adam"></a>Adam</h3><p>因此，选择Adam优化器是解决您学习率需求的简单而直接的方法。让我们仔细看看PyTorch的Adam优化器及其参数：</p>
+<ul>
+<li>params：模型的参数</li>
+<li>lr：学习率，默认值1e-3</li>
+<li>betas：包含EWMA的beta1和beta2的元组</li>
+<li>eps：分母中的epsilon（1e-8）值</li>
+</ul>
+<p>上述四个参数现在应该已经很清楚了。但还有另外两个我们还没有谈过：</p>
+<ul>
+<li>weight_decay：L2 惩罚</li>
+<li>amsgrad：是否AMSGrad可用</li>
+</ul>
+<p>第一个参数，权重衰减，为模型的权重引入了一个正则化项（L2惩罚）。与每个正则化程序一样，它旨在通过惩罚具有大值的权重来防止过度拟合。权重衰减一词源于一个事实，即正则化实际上通过将权重值乘以权重衰变参数来增加梯度。</p>
+<blockquote>
+<p>如果它增加了梯度，为什么它被称为权重衰减？</p>
+</blockquote>
+<p>在参数更新中，梯度乘以学习率，并从权重的上一个值中减去。因此，实际上，在梯度值上添加惩罚会使权重变小。重量越小，惩罚就越小，因此进一步的减少甚至更小——换句话说，重量正在衰减。</p>
+<p>第二个参数，amsgrad，使优化器与同名的变体兼容。简而言之，它修改了用于计算适应梯度的公式，放弃了偏置校正，而是使用平方梯度的EWMA的峰值。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">optimizer = optim.Adam(model.parameters(), lr=<span class="number">0.1</span>,</span><br><span class="line">                         betas=(<span class="number">0.9</span>, <span class="number">0.999</span>), eps=<span class="number">1e-8</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="可视化适应梯度"><a href="#可视化适应梯度" class="headerlink" title="可视化适应梯度"></a>可视化适应梯度</h3><p>现在，我想给你一个机会来可视化梯度、EWMA和由此产生的适应梯度。为了更容易，让我们从本书的第一部分中带回我们简单的线性回归问题，并有点怀旧地执行训练循环，以便我们可以记录梯度。</p>
+<blockquote>
+<p>从现在开始，直到“学习率”部分结束，我们将仅使用简单的线性回归数据集来说明不同参数对最小化损失的影响。</p>
+</blockquote>
+<p>首先，我们再次生成数据点，并运行典型的数据准备步骤（构建数据集、拆分和构建数据加载器）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">%run -i data_generation/simple_linear_regression.py</span><br><span class="line">%run -i data_preparation/v2.py</span><br></pre></td></tr></table></figure>
+
+<p>然后，我们检查模型配置，并将优化器从SGD更改为Adam：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model = nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;linear&#x27;</span>, nn.Linear(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">optimizer = optim.Adam(model.parameters(), lr=<span class="number">0.1</span>)</span><br><span class="line">loss_fn = nn.MSELoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果不是因为一个小细节，我们准备使用StepByStep类来训练我们的模型：我们仍然没有记录梯度的方法。因此，让我们通过在我们的类中添加另一种方法来解决这个问题：capture_gradients()。</p>
+<p>对于每个受监控层，它将检查其参数，对于那些需要梯度的，它将创建一个日志函数（log_fn()），并在与参数对应的张量中为其注册一个钩子。</p>
+<p>日志记录功能只需将梯度附加到字典条目中与图层和参数名称对应的列表中。字典本身，_gradients，是类的一个属性（将在构造函数方法中创建，但我们现在使用setattr手动设置它）。代码看起来像这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_gradients&#x27;</span>, &#123;&#125;)</span><br><span class="line"><span class="keyword">def</span> <span class="title function_">capture_gradients</span>(<span class="params">self, layers_to_hook</span>): </span><br><span class="line">		<span class="keyword">if</span> <span class="keyword">not</span> <span class="built_in">isinstance</span>(layers_to_hook, <span class="built_in">list</span>):</span><br><span class="line">          layers_to_hook = [layers_to_hook]</span><br><span class="line">    modules = <span class="built_in">list</span>(self.model.named_modules())</span><br><span class="line">    self._gradients = &#123;&#125;</span><br><span class="line">		<span class="keyword">def</span> <span class="title function_">make_log_fn</span>(<span class="params">name, parm_id</span>): </span><br><span class="line">				<span class="keyword">def</span> <span class="title function_">log_fn</span>(<span class="params">grad</span>):</span><br><span class="line">            self._gradients[name][parm_id].append(grad.tolist())</span><br><span class="line">						<span class="keyword">return</span> <span class="literal">None</span> </span><br><span class="line">				<span class="keyword">return</span> log_fn</span><br><span class="line">		<span class="keyword">for</span> name, layer <span class="keyword">in</span> self.model.named_modules(): </span><br><span class="line">				<span class="keyword">if</span> name <span class="keyword">in</span> layers_to_hook:</span><br><span class="line">						self._gradients.update(&#123;name: &#123;&#125;&#125;)</span><br><span class="line">						<span class="keyword">for</span> parm_id, p <span class="keyword">in</span> layer.named_parameters():</span><br><span class="line">								<span class="keyword">if</span> p.requires_grad: </span><br><span class="line">										self._gradients[name].update(&#123;parm_id: []&#125;) </span><br><span class="line">										log_fn = make_log_fn(name, parm_id) </span><br><span class="line">										self.handles[<span class="string">f&#x27;<span class="subst">&#123;name&#125;</span>.<span class="subst">&#123;parm_id&#125;</span>.grad&#x27;</span>] = \</span><br><span class="line">							        p.register_hook(log_fn)</span><br><span class="line">		<span class="keyword">return</span> </span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;capture_gradients&#x27;</span>, capture_gradients)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>重要信息：日志函数必须返回None，否则将梯度将会被修改。</p>
+<p>register_hook()方法将向后钩子注册到给定参数的张量。钩子函数接受梯度作为输入，并返回修改后的梯度或无。每次计算相对于该张量的梯度时，都会调用钩子函数。</p>
+<p>由于我们将此函数用于日志记录目的，我们应该放弃梯度并返回None。</p>
+</blockquote>
+<p>这是一个公平的问题。在撰写本文时，此方法仍有未解决的问题，因此我们遵循对单个张量使用register_hook()的建议。</p>
+<p>现在，我们可以使用新方法记录模型线性层的梯度，永远不会忘记在训练后移除钩子：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">sbs_adam = StepByStep(model, loss_fn, optimizer)</span><br><span class="line">sbs_adam.set_loaders(train_loader)</span><br><span class="line">sbs_adam.capture_gradients(<span class="string">&#x27;linear&#x27;</span>)</span><br><span class="line">sbs_adam.train(<span class="number">10</span>)</span><br><span class="line">sbs_adam.remove_hooks()</span><br></pre></td></tr></table></figure>
+
+<p>训练完成时，我们将收集两个50个梯度序列（每个纪元有五个迷你批次），每个序列对应一个线性参数（权重和偏差），它们都存储在我们的StepByStep实例的_gradients属性中。</p>
+<p>我们可以使用这些值来计算EWMA和Adam实际用于更新参数的适应梯度。让我们为重量参数做吧：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">gradients = np.array(</span><br><span class="line">    sbs_adam._gradients[<span class="string">&#x27;linear&#x27;</span>][<span class="string">&#x27;weight&#x27;</span>]</span><br><span class="line">).squeeze()</span><br><span class="line">corrected_gradients = calc_corrected_ewma(gradients, <span class="number">19</span>)</span><br><span class="line">corrected_sq_gradients = calc_corrected_ewma(</span><br><span class="line">    np.power(gradients, <span class="number">2</span>), <span class="number">1999</span></span><br><span class="line">  )</span><br><span class="line">adapted_gradients = (corrected_gradients /</span><br><span class="line">    (np.sqrt(corrected_sq_gradients) + <span class="number">1e-8</span>))</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F9f504cc3-5892-402c-a84c-a76d5873bce1%2FIMG_0260.jpeg?table=block&id=304e8823-9d2b-4c26-9ca1-44d6f9db35de&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1910&userId=&cache=v2"></p>
+<p>在左侧图中，我们看到梯度（红色）的偏置校正EWMA正在平滑梯度。在中心，平方梯度的偏置校正EWMA用于缩放平滑梯度。在右边，两个EWMA被组合起来计算适应的梯度。</p>
+<p>在引擎盖下，Adam为每个参数保留两个值，exp_avg和exp_avg_sq，分别代表梯度和平方梯度的（未更正的）EWMA。我们可以使用优化器的state_dict()来窥视这一点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">optimizer.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">Output</span><br><span class="line">   &#123;<span class="string">&#x27;state&#x27;</span>: &#123;<span class="number">140601337662512</span>: &#123;<span class="string">&#x27;step&#x27;</span>: <span class="number">50</span>,</span><br><span class="line">     <span class="string">&#x27;exp_avg&#x27;</span>: tensor([[-<span class="number">0.0089</span>]], device=<span class="string">&#x27;cuda:0&#x27;</span>),</span><br><span class="line">     <span class="string">&#x27;exp_avg_sq&#x27;</span>: tensor([[<span class="number">0.0032</span>]], device=<span class="string">&#x27;cuda:0&#x27;</span>)&#125;,</span><br><span class="line">    <span class="number">140601337661632</span>: &#123;<span class="string">&#x27;step&#x27;</span>: <span class="number">50</span>,</span><br><span class="line">     <span class="string">&#x27;exp_avg&#x27;</span>: tensor([<span class="number">0.0295</span>], device=<span class="string">&#x27;cuda:0&#x27;</span>),</span><br><span class="line">     <span class="string">&#x27;exp_avg_sq&#x27;</span>: tensor([<span class="number">0.0096</span>], device=<span class="string">&#x27;cuda:0&#x27;</span>)&#125;&#125;,</span><br><span class="line">   <span class="string">&#x27;param_groups&#x27;</span>: [&#123;<span class="string">&#x27;lr&#x27;</span>: <span class="number">0.1</span>,</span><br><span class="line">     <span class="string">&#x27;betas&#x27;</span>: (<span class="number">0.9</span>, <span class="number">0.999</span>),</span><br><span class="line">     <span class="string">&#x27;eps&#x27;</span>: <span class="number">1e-08</span>,</span><br><span class="line">     <span class="string">&#x27;weight_decay&#x27;</span>: <span class="number">0</span>,</span><br><span class="line">     <span class="string">&#x27;amsgrad&#x27;</span>: <span class="literal">False</span>,</span><br><span class="line">     <span class="string">&#x27;params&#x27;</span>: [<span class="number">140601337662512</span>, <span class="number">140601337661632</span>]&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在字典的状态键中，它包含另外两个词典（带有奇怪的数字键），代表模型的不同参数。在我们的示例中，第一本字典（140614347109072）对应于权重参数。由于我们已经记录了所有的梯度，我们应该能够使用calc_ewma()函数来复制字典中包含的值：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(calc_ewma(gradients, <span class="number">19</span>)[-<span class="number">1</span>],</span><br><span class="line">calc_ewma(np.power(gradients, <span class="number">2</span>), <span class="number">1999</span>)[-<span class="number">1</span>])</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">(-<span class="number">0.008938403644834258</span>, <span class="number">0.0031747136253540394</span>)</span><br></pre></td></tr></table></figure>
+
+<p>取我们两个未校正的EWMA的最后一个值，我们匹配了优化器（exp_avg和exp_avg_sq）。酷！</p>
+<blockquote>
+<p>“好吧，很酷，但在实践中，它怎么比SGD更好呢？</p>
+</blockquote>
+<p>足够公平！我们一直在讨论参数更新的不同之处，但现在是时候展示它如何影响模型训练了。让我们带回我们为这个线性回归计算的损失表面（追溯到第0章），并可视化每个优化器采取的路径，以使两个参数（更接近）到其最优值。那太好了，但我们缺少另一个小细节：我们也没有办法记录参数的演变。我们要做那件事吗？当然，创造另一种方法！</p>
+<p>新方法被恰当地命名为 capture_parameters()，其工作方式类似于 capture_gradients()。它保留字典（参数）作为类的属性，并将正向钩子注册到我们要记录参数的层。日志函数只需循环给定层的参数，并将其值附加到字典中的相应条目中。注册本身由我们之前开发的方法处理：attach_hooks()。代码看起来像这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_parameters&#x27;</span>, &#123;&#125;)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">capture_parameters</span>(<span class="params">self, layers_to_hook</span>):</span><br><span class="line">    <span class="keyword">if</span> <span class="keyword">not</span> <span class="built_in">isinstance</span>(layers_to_hook, <span class="built_in">list</span>):</span><br><span class="line">        layers_to_hook = [layers_to_hook]</span><br><span class="line"></span><br><span class="line">    modules = <span class="built_in">list</span>(self.model.named_modules())</span><br><span class="line">    layer_names = &#123;layer: name <span class="keyword">for</span> name, layer <span class="keyword">in</span> modules&#125;</span><br><span class="line">    </span><br><span class="line">    self._parameters = &#123;&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">for</span> name, layer <span class="keyword">in</span> modules:</span><br><span class="line">        <span class="keyword">if</span> name <span class="keyword">in</span> layers_to_hook:</span><br><span class="line">            self._parameters.update(&#123;name: &#123;&#125;&#125;)</span><br><span class="line">            <span class="keyword">for</span> parm_id, p <span class="keyword">in</span> layer.named_parameters():</span><br><span class="line">                self._parameters[name].update(&#123;parm_id: []&#125;)</span><br><span class="line">            </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">fw_hook_fn</span>(<span class="params">layer, inputs, outputs</span>):</span><br><span class="line">        name = layer_names[layer]</span><br><span class="line">        <span class="keyword">for</span> parm_id, parameter <span class="keyword">in</span> layer.named_parameters():</span><br><span class="line">            self._parameters[name][parm_id].append(parameter.tolist())</span><br><span class="line">    </span><br><span class="line">    self.attach_hooks(layers_to_hook, fw_hook_fn)</span><br><span class="line">    <span class="keyword">return</span></span><br><span class="line">    </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;capture_parameters&#x27;</span>, capture_parameters)</span><br></pre></td></tr></table></figure>
+
+<p>接下来我们要创建两个StepByStep实例，分别使用不同的优化器，设置它们来获取参数，然后训练十个迭代。捕获到的参数（偏移值和权重）将被绘制成下图这样：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F67d94f77-016f-4418-8f67-85432c3f54b4%2FIMG_0261.jpeg?table=block&id=7802f105-7975-426e-a5a6-d71d3f5cbd22&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1880&userId=&cache=v2"></p>
+<p>在左边的图中，我们有简单梯度下降的典型行为良好（和缓慢）路径。 你可以看到，由于使用迷你批次引入的噪音，它有点晃动。 在右边的图中，我们看到了使用指数加权移动平均线的效果：一方面，它更平滑，移动速度更快；另一方面，它超调，在接近目标时必须来回改变路线。 如果你愿意的话，它正在适应损失表面。</p>
+<blockquote>
+<p>如果您喜欢可视化（和动画化）优化器路径的想法，请务必查看Louis Tiao关于该主题的教程[103]。</p>
+</blockquote>
+<p>说到损失，我们还可以比较每个优化器的训练轨迹和验证损失。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F2b3eafa2-ccb7-44a9-902a-c3b7567bce2d%2FIMG_0262.jpeg?table=block&id=84db1124-58d3-444f-bfb7-b51cdf79637f&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1870&userId=&cache=v2"></p>
+<p>请记住，损失是在每个时代结束时通过平均迷你批次的损失来计算的。在左边的图中，即使SGD有点摆动，我们也可以看到每个时代的损失都比前一个时代低。在右边的情节上，随着训练损失的增加，超调变得清晰可见。但同样明显的是，Adam实现了较低的损失，因为它更接近最佳值（上一个图中的红点）。</p>
+<blockquote>
+<p>在实际问题上，几乎不可能绘制损失表面，我们可以将损失视为正在发生的事情的“执行摘要”。训练损失有时会在再次下降之前上升，这是意料之中的。</p>
+</blockquote>
+<h3 id="随机梯度下降（SGD）"><a href="#随机梯度下降（SGD）" class="headerlink" title="随机梯度下降（SGD）"></a>随机梯度下降（SGD）</h3><p>适应性学习率确实很酷，但良好的老随机梯度下降（SGD）也有一些技巧。让我们仔细看看PyTorch的SGD优化器及其参数：</p>
+<ul>
+<li>parma’s：模型的参数</li>
+<li>lr：学习率</li>
+<li>weight_decay：L2惩罚</li>
+</ul>
+<p>上述三个论点已经知道。但有三个新论点：</p>
+<ul>
+<li>momentum：动量因子，SGD自己的测试版论点，是下一节的主题</li>
+<li>dampening：动量的阻尼因子</li>
+<li>nesterov：启用Nesterov</li>
+</ul>
+<p>这是更深入地了解势头的最佳时机。</p>
+<h3 id="动量因子"><a href="#动量因子" class="headerlink" title="动量因子"></a>动量因子</h3><p>SGD的技巧之一被称为动量。乍一看，它看起来非常像使用EWMA进行梯度，但事实并非如此。让我们将EWMA的β配方与动量进行比较：</p>
+<p>$$<br>EWMA_t&#x3D;(1-\beta)grad_t+\beta \ EWMA_{t-1} \<br>momentum_t&#x3D;grad_t + \beta \ momentum_{t-1}<br>$$</p>
+<p>看到区别了吗？它不平均梯度；它运行“折扣”梯度的累积总和。换句话说，所有过去的梯度都有助于增加总和，但随着年龄的增长，它们越来越“折扣”。“折扣”由测试版参数驱动。我们也可以像这样写出动量公式：</p>
+<p>$$<br>momentum_t&#x3D;\beta^0 \ grad_t+ \beta^1 \ grad_{t-1}+ \beta^2 \ grad_{t-2}+…+ \beta^n \ grad_{t-n}<br>$$</p>
+<p>第二个公式的缺点是，它需要梯度的完整历史，而前一个公式仅取决于梯度的当前值和动量的最新值。</p>
+<blockquote>
+<p>阻尼因子呢？</p>
+</blockquote>
+<p>阻尼因子是抑制最新梯度效果的一种方式。 最新梯度没有获得全部附加值，而是被阻尼因子降低对动量的贡献。 因此，如果阻尼系数为0.3，则只有70%的最新梯度被添加到动量中。 其公式由以下方式给出：</p>
+<p>$$<br>momentum_t&#x3D;(1-damp)grad_t+\beta \ momentum_{t-1}<br>$$</p>
+<p>如果阻尼因子等于动量因子（beta），它就会成为真正的EWMA！</p>
+<p>与Adam类似，带有动量的SGD保持了每个参数的动量值。测试参数也存储在那里（momentum）。我们可以使用优化器的state_dict()来偷看它：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;<span class="string">&#x27;state&#x27;</span>: &#123;<span class="number">139863047119488</span>: &#123;<span class="string">&#x27;momentum_buffer&#x27;</span>: tensor([[-</span><br><span class="line"> <span class="number">0.0053</span>]])&#125;,</span><br><span class="line">   <span class="number">139863047119168</span>: &#123;<span class="string">&#x27;momentum_buffer&#x27;</span>: tensor([-<span class="number">0.1568</span>])&#125;&#125;,</span><br><span class="line">  <span class="string">&#x27;param_groups&#x27;</span>: [&#123;<span class="string">&#x27;lr&#x27;</span>: <span class="number">0.1</span>,</span><br><span class="line">    <span class="string">&#x27;momentum&#x27;</span>: <span class="number">0.9</span>,</span><br><span class="line">    <span class="string">&#x27;dampening&#x27;</span>: <span class="number">0</span>,</span><br><span class="line">    <span class="string">&#x27;weight_decay&#x27;</span>: <span class="number">0</span>,</span><br><span class="line">    <span class="string">&#x27;nesterov&#x27;</span>: <span class="literal">False</span>,</span><br><span class="line">    <span class="string">&#x27;params&#x27;</span>: [<span class="number">139863047119488</span>, <span class="number">139863047119168</span>]&#125;]&#125;</span><br></pre></td></tr></table></figure>
+
+<p>尽管旧的梯度慢慢消失，对总和的贡献越来越小，但最近的梯度几乎是按其面值（假设β的典型值为0.9，没有阻尼）。这意味着，给定所有正（或所有负）梯度的序列，它们的总和，即动量，正在快速上升（以绝对值计算）。大动量会转化为大更新，因为动量取代了参数更新中的梯度：</p>
+<p>$$<br>SGD: param_t&#x3D;param_{t-1}-\eta \ gradient_t \<br>Adam: param_t&#x3D;param_{t-1}- \eta \ adapted \ gradient_t \<br>SGD \ with \ Momentum:param_{t-1}- \eta \ momentum_t<br>$$</p>
+<p>这种行为可以很容易地在SGD以动量采取的路径中可视化。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F60564961-bcda-4777-a6a2-7ae3458bdff5%2FIMG_0263.jpeg?table=block&id=fc666296-c585-40f6-b77e-0c828a153c8b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1880&userId=&cache=v2"></p>
+<p>像Adam优化器一样，具有动量的SGD移动速度更快，而且超调。但它似乎确实被它冲昏了头脑，以至于它越过了目标，不得不倒退，从不同的方向接近它。</p>
+<p>动量更新的比喻是一个滚下山的球：它加快了如此多的速度，以至于它最终爬上了山谷的另一边，只是以稍微小一点的速度再次滚下来，一遍又一遍地来回地这样做，直到最终到达底部。</p>
+<blockquote>
+<p>Adam不是更好吗？</p>
+</blockquote>
+<p>是和不是。亚当确实收敛得更快，但不一定是好的。在简单的线性回归中，有一个对应于参数最佳值的全局最小值。深度学习模型的情况并非如此：有许多最小值（最小值的复数），有些优于其他（对应于较低的损失）。因此，亚当会找到这些最小之一，并快速移动到那里，也许可以忽略附近更好的替代方案。</p>
+<p>动量起初可能看起来有点马虎，但它可能会与学习率调度器相结合（稍后会详细介绍！） 更好地探索损失表面，希望找到比亚当更好的最低质量。</p>
+<blockquote>
+<p>两种替代方案，Adam和SGD，有动量（特别是当与学习率调度器结合时），都很常用。</p>
+</blockquote>
+<p>但是，如果一个下坡的球对你来说似乎有点失控，也许你会更喜欢它的变体……</p>
+<h3 id="Nesterov"><a href="#Nesterov" class="headerlink" title="Nesterov"></a>Nesterov</h3><p>Nesterov加速梯度（NAG）或简称Nesterov，是具有动量的SGD的巧妙变体。假设我们正在计算连续两个步骤（t和t+1）的动量：</p>
+<p>$$<br>step\ t: mo_t&#x3D;grad_t+\beta\ mo_{t-1} \<br>step+1: mo_{t+1}&#x3D;grad_{t+1}+\beta\ mo_t<br>$$</p>
+<p>在当前步骤（t）中，我们使用当前梯度（t）和动量从</p>
+<p>上一步（t-1）计算当前动量。到目前为止，没有什么新鲜事。</p>
+<p>在下一步（t+1）中，我们将使用下一个梯度（t+1）和我们刚刚为当前步骤（t）计算的动量来计算下一个动量。</p>
+<p>如果我要求你提前一步计算动量呢？</p>
+<blockquote>
+<p>当你还在step t时，你能告诉我t+1步的势头吗？</p>
+</blockquote>
+<p>你会说：“我当然不能，我不知道stept+1的梯度！”所以，我再问你另一个问题：</p>
+<blockquote>
+<p>你对step+1的梯度的最佳猜测是什么？”</p>
+</blockquote>
+<p>我希望你的回答是：“梯度在step t”。如果你不知道变量的未来值，本地化评估值是当前的值。所以，我们用Nesterov风格！</p>
+<p>基本上说，NAG做的事尝试计算前面一个步骤的动量因子。</p>
+<p>$$<br>step\ t: mo_t&#x3D;grad_t+\beta\ mo_{t-1} \<br>step\ t: nesterov_t&#x3D;grad_t+\beta \ mo_t \<br>step\ t+1: mo_{t+1}&#x3D;grad_{t+1}+\beta\ mo_t<br>$$</p>
+<p>一旦计算了Nesterov的动量，它就会取代参数更新中的梯度，就像常规动量一样：</p>
+<p>$$<br>SGD\ with\ Momentum:param_t&#x3D;param_{t-1}-\eta \ mo_t \<br>SGD\ with\ Nesterov:param_t&#x3D;param_{t-1}&#x3D;\eta \ nesterov_t<br>$$</p>
+<p>但是，Nesterov实际上使用动量，所以我们可以像这样扩展它的表达方式：</p>
+<p>$$<br>param_t&#x3D;param_{t-1}-\eta\ nesterov_t \<br>&#x3D;param_{t-1}-\eta(grad_t+\eta\ mo_t) \<br>&#x3D;param_{t-1}-\eta\ grad_t-\beta \ \eta \ mo_t<br>$$</p>
+<p>为什么你要做这些？为什么哟啊把公式做的这么复杂？</p>
+<h3 id="SGD风味"><a href="#SGD风味" class="headerlink" title="SGD风味"></a>SGD风味</h3><p>当涉及到它们执行参数更新的方式时，让我们比较一下SGD、香草（常规）、动量和Nesterov的三种口味：</p>
+<p>$$<br>SGD:param_t&#x3D;param_{t-1}-\eta\ grad_t \<br>SGD\ with\ Momentum:param_t&#x3D;param_{t-1}-\eta\ mo_t \<br>SGD\ with\ Nesterov:param_t&#x3D;param_{t-1}-\eta\ grad_t- \beta \eta \ mo_t<br>$$</p>
+<p>这就是为什么我在最后一节中扩展了Nesterov的表达：以这种方式比较更新更容易！首先，有规则的SGD，它使用梯度，没有其他东西。</p>
+<p>更新有多大不同？ 我们去看看吧！ 下面的图显示了我们线性回归权重参数的更新项（在乘以学习率之前）。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F1ae2fb25-a631-43d8-bbcd-10c6d8f2ed19%2FIMG_0264.jpeg?table=block&id=1b46de02-2f81-400e-a444-9125ad10d4b9&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1850&userId=&cache=v2"></p>
+<p>带有动量的SGD的更新术语的形状是否敲响了警钟？振荡模式已经在SGD的动量路径中描绘了，同时优化了两个参数：当它过冲时，它必须反转方向，通过反复这样做，会产生这些振荡。</p>
+<p>Nesterov动量似乎做得更好：展望具有抑制振荡的效果（请不要将这种效果与实际的阻尼参数混淆）。当然，想法是向前看，避免走得太远，但你能事先告诉我这两个情节之间的区别吗？我也是！好吧，我假设你对这个问题回答了“不”，这就是为什么我认为说明上述模式是个好主意。</p>
+<p>“为什么这些情节中的黑线不同？底层梯度不是应该是一样的吗？”</p>
+<p>在所有三种口味中，梯度的计算方式确实相同，但由于更新条款不同，梯度是在损失表面的不同位置计算的。 当我们查看每种口味所走的路径时，这一点就变得清晰了。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F284af074-1463-4b32-9618-354f1e503861%2FIMG_0265.jpeg?table=block&id=d7f83b65-9702-4752-acb1-c7ac956402cc&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1890&userId=&cache=v2"></p>
+<p>以黑线左下角的第三个点为例：它的位置</p>
+<p>每个地块都大不相同，因此相应的梯度也是如此。</p>
+<p>左边的两个地块我们已经知道了。镇上的新地块是右边的。振荡的阻尼非常明显，但内斯特罗夫的动量仍然超过其目标，必须稍微后退才能从相反的方向接近它。让我提醒你，这是最简单的损失表面之一！</p>
+<p>说到损失，让我们看看他们的轨迹。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F00f798f3-6674-45d7-9a92-fd2462cc76a4%2FIMG_0266.jpeg?table=block&id=b0bffc97-3f3e-4813-9b99-7a0dfbfe8629&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1800&userId=&cache=v2"></p>
+<p>左边的情节只是为了比较；它和以前一样。右边的那个也相当简单，描述了一个事实，即Nesterov的动量迅速找到了较低的损失，并慢慢接近最佳值。</p>
+<p>中间的情节更有趣：即使有规律的动量在损失表面上产生了一条具有狂野波动的路径（每个黑点对应于一个迷你批量），但其损失轨迹的振荡比亚当的要小。这是这个简单的线性回归问题（即碗状损失表面）的产物，不应被视为典型行为的代表。</p>
+<p>如果你不相信势头，无论是常规的还是内斯特罗夫的，让我们在组合中添加一些其他的东西……</p>
+<h3 id="学习率调度器"><a href="#学习率调度器" class="headerlink" title="学习率调度器"></a>学习率调度器</h3><p>也可以随着训练的进行安排学习率的变化，而不是调整梯度。 假设你想在每个T纪元上将学习率降低一个数量级（即乘以0.1），这样一开始训练会更快，一段时间后就会放慢速度，以避免收敛问题。</p>
+<blockquote>
+<p>这就是学习率调度器的作用：它更新优化器的学习率。</p>
+</blockquote>
+<p>因此，调度器的论点之一是优化器本身也就不足为奇了。为优化器设置的学习率将是调度器的初始学习率。例如，让我们以最简单的调度器为例：StepLR，它只需将学习率乘以每个step_size纪元的因子伽马。</p>
+<p>在下面的代码中，我们创建了一个虚拟优化器，它正在“更新”一些初始学习率为0.01的假参数。虚拟调度器是StepLR的一个实例，每两个纪元将该学习率乘以0.1。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">dummy_optimizer = optim.SGD([nn.Parameter(torch.randn(<span class="number">1</span>))], lr=<span class="number">0.01</span>)</span><br><span class="line">dummy_scheduler = StepLR(dummy_optimizer, step_size=<span class="number">2</span>, gamma=<span class="number">0.1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>调度器有一个步骤（）方法，就像优化器一样。</p>
+<blockquote>
+<p>在调用优化器的step()方法后，您应该调用调度器的step()方法。</p>
+</blockquote>
+<p>在培训循环中，它看起来像这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> epoch <span class="keyword">in</span> <span class="built_in">range</span>(<span class="number">4</span>):</span><br><span class="line">		<span class="comment"># training loop code goes here</span></span><br><span class="line">		<span class="built_in">print</span>(dummy_scheduler.get_last_lr()) </span><br><span class="line">		<span class="comment"># First call optimizer&#x27;s step </span></span><br><span class="line">		dummy_optimizer.step()</span><br><span class="line">		<span class="comment"># Then call scheduler&#x27;s step </span></span><br><span class="line">		dummy_scheduler.step()</span><br><span class="line">		dummy_optimizer.zero_grad()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">[<span class="number">0.01</span>]</span><br><span class="line">[<span class="number">0.01</span>]</span><br><span class="line">[<span class="number">0.001</span>]</span><br><span class="line">[<span class="number">0.001</span>]</span><br></pre></td></tr></table></figure>
+
+<p>不出所料，它保持了两个纪元的初始学习率，然后乘以0.1，导致另外两个纪元的学习率为0.001。 简而言之，这就是学习速率调度器的工作原理。</p>
+<blockquote>
+<p>每个调度员都会降低学习率吗？</p>
+</blockquote>
+<p>不完全是，不。过去，在训练模型时，缩小学习率是标准程序，但这个想法随后受到周期性学习率的挑战（这是Leslie N的“周期性”部分）。史密斯的论文！）。正如你所看到的，有许多不同口味的日程安排。其中许多在PyTorch中可用。</p>
+<p>我们将调度器分为三组：每个T纪元更新学习率的调度器（即使T&#x3D;1），如上例所示；仅在验证丢失似乎卡住时更新学习率的调度器；以及在每个迷你批量后更新学习率的调度器。</p>
+<h3 id="迭代调度器"><a href="#迭代调度器" class="headerlink" title="迭代调度器"></a>迭代调度器</h3><p>这些调度器将在每个时代结束时调用其step()方法。但每个调度器都有自己的更新学习率的规则。</p>
+<ul>
+<li>StepLR：它使学习率乘以每个step_size纪元的因子伽马。</li>
+<li>MultiStepLR：它在时代将学习率乘以伽马因子</li>
+</ul>
+<p>在里程碑列表中注明。</p>
+<ul>
+<li>ExponentialLR：它每个纪元都将学习率乘以一个因子伽马，不</li>
+</ul>
+<p>例外。</p>
+<ul>
+<li>LambdaLR：它采用您自己的自定义函数，该函数应将纪元作为参数，并返回相应的乘法因子（关于初始学习率）。</li>
+<li>CosineAnnealingLR：它使用一种名为余弦退火的技术来更新学习率，但我们在这里没有深入研究细节。</li>
+</ul>
+<p>我们可以使用LambdaLR来模拟上面定义的StepLR调度器的行为：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">dummy_optimizer = optim.SGD([nn.Parameter(torch.randn(<span class="number">1</span>))], lr=<span class="number">0.01</span>)</span><br><span class="line">dummy_scheduler = LambdaLR(</span><br><span class="line">dummy_optimizer, lr_lambda=<span class="keyword">lambda</span> epoch: <span class="number">0.1</span> ** (epoch//<span class="number">2</span>) )</span><br><span class="line">  <span class="comment"># The scheduler above is equivalent to this one</span></span><br><span class="line">  <span class="comment"># dummy_scheduler = StepLR(dummy_optimizer, step_size=2, gamma=0.1)</span></span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F89446c58-2173-444f-bc14-81988feff733%2FIMG_0267.jpeg?table=block&id=7d6dde88-5cf8-4633-a7ec-b8d4223a7f03&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1120&userId=&cache=v2"></p>
+<h3 id="验证损失调度器"><a href="#验证损失调度器" class="headerlink" title="验证损失调度器"></a>验证损失调度器</h3><p>ReduceLROnPlateau调度器也应该在每个纪元结束时调用其step()方法，但它在这里有自己的组，因为它不遵循预定义的时间表。 讽刺，对吗？</p>
+<p>ReduceLROnPlateau调度器也应该在每个纪元结束时调用其step()方法，但它在这里有自己的组，因为它不遵循预定义的时间表。讽刺，对吗？</p>
+<p>Step()方法将验证损失作为参数，调度器可以配置为容忍损失缺乏改进（当然是阈值），直到给定数量的纪元（恰当命名的耐心参数）。调度器用完耐心后，它会更新学习率，将其乘以因子参数（对于最后一节中列出的调度器，此因子被命名为伽玛）。</p>
+<p>为了说明它的行为，让我们假设连续12个纪元的验证损失保持在相同的值（无论它是什么）。我们的调度器会怎么做？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">dummy_optimizer = optim.SGD([nn.Parameter(torch.randn(<span class="number">1</span>))], lr=<span class="number">0.01</span>)</span><br><span class="line">dummy_scheduler = ReduceLROnPlateau(</span><br><span class="line">    dummy_optimizer, patience=<span class="number">4</span>, factor=<span class="number">0.1</span></span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F7bec825e-ee28-4fc6-b60a-1a3deeea2431%2FIMG_0268.jpeg?table=block&id=1bce98c7-95b3-4d73-86bb-3d2e2df0019d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1170&userId=&cache=v2"></p>
+<p>它的耐心是四个时代，所以在四个时代观察到同样的损失后，它被一根线挂住了。然后是第五个时代，没有变化：“就是这样，学习率必须下降，”你几乎可以听到它说:-)所以，在第六个时代，优化器已经在使用新更新的学习率。如果再过四个时代没有什么变化，它就会再次下降，如上图所示。</p>
+<h3 id="StepByStep中的调度器—第一部分"><a href="#StepByStep中的调度器—第一部分" class="headerlink" title="StepByStep中的调度器—第一部分"></a>StepByStep中的调度器—第一部分</h3><p>如果我们想将学习率调度器纳入我们的培训循环中，我们需要对我们的StepByStep课程进行一些更改。由于调度器绝对是可选的，我们需要添加一种方法，允许用户设置调度器（类似于我们使用TensorBoard集成所做的）。此外，我们需要定义一些属性：一个用于调度器本身，以及一个布尔变量，以区分它是纪元还是迷你批量调度器。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;scheduler&#x27;</span>, <span class="literal">None</span>)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;is_batch_lr_scheduler&#x27;</span>, <span class="literal">False</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">set_lr_scheduler</span>(<span class="params">self, scheduler</span>):</span><br><span class="line">		<span class="comment"># Makes sure the scheduler in the argument is assigned to the # optimizer we&#x27;re using in this class</span></span><br><span class="line">		<span class="keyword">if</span> scheduler.optimizer == self.optimizer:</span><br><span class="line">				self.scheduler = scheduler</span><br><span class="line">				<span class="keyword">if</span> (<span class="built_in">isinstance</span>(scheduler, optim.lr_scheduler.CyclicLR) <span class="keyword">or</span></span><br><span class="line">						<span class="built_in">isinstance</span>(scheduler, optim.lr_scheduler.OneCycleLR) <span class="keyword">or</span> </span><br><span class="line">						<span class="built_in">isinstance</span>(scheduler,</span><br><span class="line">                  optim.lr_scheduler.CosineAnnealingWarmRestarts)):</span><br><span class="line">            self.is_batch_lr_scheduler = <span class="literal">True</span></span><br><span class="line">		<span class="keyword">else</span>:</span><br><span class="line">				self.is_batch_lr_scheduler = <span class="literal">False</span></span><br><span class="line">  </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;set_lr_scheduler&#x27;</span>, set_lr_scheduler)</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们创建一个受保护的方法，调用调度器的step()方法，并将当前学习速率附加到属性中，以便我们可以跟踪其演变。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;learning_rates&#x27;</span>, [])</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_epoch_schedulers</span>(<span class="params">self, val_loss</span>): </span><br><span class="line">		<span class="keyword">if</span> self.scheduler:</span><br><span class="line">				<span class="keyword">if</span> <span class="keyword">not</span> self.is_batch_lr_scheduler: </span><br><span class="line">						<span class="keyword">if</span> <span class="built_in">isinstance</span>(self.scheduler,</span><br><span class="line">                    torch.optim.lr_scheduler.ReduceLROnPlateau):</span><br><span class="line">                  self.scheduler.step(val_loss)</span><br><span class="line">				<span class="keyword">else</span>: self.scheduler.step()</span><br><span class="line">						current_lr = <span class="built_in">list</span>(<span class="built_in">map</span>(</span><br><span class="line">						<span class="keyword">lambda</span> d: d[<span class="string">&#x27;lr&#x27;</span>],</span><br><span class="line">						self.scheduler.optimizer.state_dict()[<span class="string">&#x27;param_groups&#x27;</span>]</span><br><span class="line">              ))</span><br><span class="line">            self.learning_rates.append(current_lr)</span><br><span class="line">  </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_epoch_schedulers&#x27;</span>, _epoch_schedulers)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>然后我们修改train()方法，以包括对上面定义的受保护方法的调用。它应该在验证内部循环之后。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">train</span>(<span class="params">self, n_epochs, seed=<span class="number">42</span></span>):</span><br><span class="line">		<span class="comment"># To ensure reproducibility of the training process self.set_seed(seed)</span></span><br><span class="line">		<span class="keyword">for</span> epoch <span class="keyword">in</span> <span class="built_in">range</span>(n_epochs):</span><br><span class="line">				<span class="comment"># Keeps track of the number of epochs</span></span><br><span class="line">				<span class="comment"># by updating the corresponding attribute </span></span><br><span class="line">				self.total_epochs += <span class="number">1</span></span><br><span class="line">				<span class="comment"># inner loop</span></span><br><span class="line">				<span class="comment"># Performs training using mini-batches </span></span><br><span class="line">				loss = self._mini_batch(validation=<span class="literal">False</span>) </span><br><span class="line">				self.losses.append(loss)</span><br><span class="line">				<span class="comment"># VALIDATION</span></span><br><span class="line">				<span class="comment"># no gradients in validation!</span></span><br><span class="line">				<span class="keyword">with</span> torch.no_grad():</span><br><span class="line">              <span class="comment"># Performs evaluation using mini-batches</span></span><br><span class="line">              val_loss = self._mini_batch(validation=<span class="literal">True</span>)</span><br><span class="line">              self.val_losses.append(val_loss)</span><br><span class="line">							self._epoch_schedulers(val_loss) </span><br><span class="line">          <span class="comment"># If a SummaryWriter has been set...</span></span><br><span class="line">				<span class="keyword">if</span> self.writer:</span><br><span class="line">						scalars = &#123;<span class="string">&#x27;training&#x27;</span>: loss&#125; </span><br><span class="line">						<span class="keyword">if</span> val_loss <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">								scalars.update(&#123;<span class="string">&#x27;validation&#x27;</span>: val_loss&#125;)</span><br><span class="line">						<span class="comment"># Records both losses for each epoch under tag &quot;loss&quot; </span></span><br><span class="line">						self.writer.add_scalars(main_tag=<span class="string">&#x27;loss&#x27;</span>,</span><br><span class="line">                                      tag_scalar_dict=scalars,</span><br><span class="line">                                      global_step=epoch)</span><br><span class="line">		<span class="keyword">if</span> self.writer:</span><br><span class="line">				<span class="comment"># Closes the writer </span></span><br><span class="line">				self.writer.close()</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;train&#x27;</span>, train)</span><br></pre></td></tr></table></figure>
+
+<h3 id="最小批量调度器"><a href="#最小批量调度器" class="headerlink" title="最小批量调度器"></a>最小批量调度器</h3><p>这些调度器在每个迷你批量结束时都会调用其step()方法。他们都是周期性调度器。</p>
+<ul>
+<li>CyclicLR：这在base_lr和max_lr之间循环（因此它忽略了优化器中设置的初始学习率），使用step_size_up更新从基数到最大学习率，并使用step_size_down更新返回。此行为对应于mode&#x3D;triangular。此外，可以使用不同的模式收缩振幅：triangular2将在每个周期后将振幅减半，而exp_range将以伽马为基数，以周期数为指数为指数的振幅。</li>
+</ul>
+<blockquote>
+<p>max_lr的一个典型值选择是使用LR范围测试找到的学习率</p>
+</blockquote>
+<ul>
+<li>OneCycleLR：这使用一种称为退火的方法将学习率从初始值更新到定义的最大学习率（max_lr），然后在total_steps更新次数下更新到低得多的学习率，从而执行单个周期。</li>
+<li>CosineAnnealingWarmRestarts：这使用余弦退火[104]来更新学习率，但我们在这里没有深入研究细节，只是说这个特定的调度器需要纪元数（包括对应于数据加载器长度的迷你批次数量的分数部分）作为其step()方法的参数。</li>
+</ul>
+<p>让我们以不同的模式尝试CyclicLR，学习速率在1e-4和1e-3之间，每个方向两个步骤。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">dummy_parm = [nn.Parameter(torch.randn(<span class="number">1</span>))]</span><br><span class="line">dummy_optimizer = optim.SGD(dummy_parm, lr=<span class="number">0.01</span>)</span><br><span class="line">dummy_scheduler1 = CyclicLR(dummy_optimizer, base_lr=<span class="number">1e-4</span>,</span><br><span class="line">max_lr=<span class="number">1e-3</span>, step_size_up=<span class="number">2</span>, mode=<span class="string">&#x27;triangular&#x27;</span>)</span><br><span class="line">dummy_scheduler2 = CyclicLR(dummy_optimizer, base_lr=<span class="number">1e-4</span>,</span><br><span class="line">max_lr=<span class="number">1e-3</span>, step_size_up=<span class="number">2</span>, mode=<span class="string">&#x27;triangular2&#x27;</span>)</span><br><span class="line">dummy_scheduler3 = CyclicLR(dummy_optimizer, base_lr=<span class="number">1e-4</span>,</span><br><span class="line">max_lr=<span class="number">1e-3</span>, step_size_up=<span class="number">2</span>, mode=<span class="string">&#x27;exp_range&#x27;</span>, gamma=np.sqrt(<span class="number">.5</span>))</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fc29be279-682e-43b9-a3db-8674614d2e4e%2FIMG_0269.jpeg?table=block&id=9ece26d2-50cc-4bfd-9b33-b3b76f08814a&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1870&userId=&cache=v2"></p>
+<p>顺便说一下，两个步骤意味着它将每四个迷你批量更新完成一个完整的周期——这是完全不合理的，这里仅用于说明行为。</p>
+<blockquote>
+<p>在实践中，一个周期应该包括两个到十个纪元（根据Leslie N.史密斯的论文），因此您需要计算出您的训练集包含多少个迷你批次（即数据加载器的长度），并将其乘以一个周期中所需的纪元数，以获得一个周期中的总步数。</p>
+</blockquote>
+<p>在我们的示例中，火车加载器有158个迷你批次，因此，如果我们希望学习率在五个纪元上循环，整个周期应该有790个步骤，因此step_size_up应该是该值的一半（395）。</p>
+<h3 id="StepByStep中的调度器—第二部分"><a href="#StepByStep中的调度器—第二部分" class="headerlink" title="StepByStep中的调度器—第二部分"></a>StepByStep中的调度器—第二部分</h3><p>我们需要做更多的更改来处理迷你批量调度器。与上面的“第一部分”类似，我们需要创建一个受保护的方法来处理这组调度器的step()方法。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">_mini_batch_schedulers</span>(<span class="params">self, frac_epoch</span>): </span><br><span class="line">		<span class="keyword">if</span> self.scheduler:</span><br><span class="line">		<span class="keyword">if</span> self.is_batch_lr_scheduler:</span><br><span class="line">		<span class="keyword">if</span> <span class="built_in">isinstance</span>(self.scheduler,</span><br><span class="line">                torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):</span><br><span class="line">                  self.scheduler.step(self.total_epochs + frac_epoch)</span><br><span class="line">		<span class="keyword">else</span>: self.scheduler.step()</span><br><span class="line">				current_lr = <span class="built_in">list</span>( <span class="built_in">map</span>(<span class="keyword">lambda</span> d: d[<span class="string">&#x27;lr&#x27;</span>],</span><br><span class="line">                    self.scheduler.optimizer.state_dict()\</span><br><span class="line">                    [<span class="string">&#x27;param_groups&#x27;</span>])</span><br><span class="line">              )</span><br><span class="line">        self.learning_rates.append(current_lr)</span><br><span class="line">  </span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_mini_batch_schedulers&#x27;</span>,</span><br><span class="line">          _mini_batch_schedulers)</span><br></pre></td></tr></table></figure>
+
+<p>然后，我们必须修改mini_batch()方法，以包括对上面定义的受保护方法的调用。它应该在循环结束时调用，但只能在训练期间调用。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">_mini_batch</span>(<span class="params">self, validation=<span class="literal">False</span></span>):</span><br><span class="line">		<span class="comment"># The mini-batch can be used with both loaders</span></span><br><span class="line">		<span class="comment"># The argument `validation` defines which loader and </span></span><br><span class="line">		<span class="comment"># corresponding step function are going to be used </span></span><br><span class="line">		<span class="keyword">if</span> validation:</span><br><span class="line">          data_loader = self.val_loader</span><br><span class="line">					step_fn = self.val_step_fn </span><br><span class="line">		<span class="keyword">else</span>:</span><br><span class="line">          data_loader = self.train_loader</span><br><span class="line">          step_fn = self.train_step_fn</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> data_loader <span class="keyword">is</span> <span class="literal">None</span>: </span><br><span class="line">				<span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">		n_batches = <span class="built_in">len</span>(data_loader)</span><br><span class="line">		<span class="comment"># Once the data loader and step function are defined; </span></span><br><span class="line">		<span class="comment"># this is the same mini-batch loop we had before </span></span><br><span class="line">		mini_batch_losses = []</span><br><span class="line">		<span class="keyword">for</span> i, (x_batch, y_batch) <span class="keyword">in</span> <span class="built_in">enumerate</span>(data_loader):</span><br><span class="line">          x_batch = x_batch.to(self.device)</span><br><span class="line">          y_batch = y_batch.to(self.device)</span><br><span class="line">          mini_batch_loss = step_fn(x_batch, y_batch)</span><br><span class="line">          mini_batch_losses.append(mini_batch_loss)</span><br><span class="line">					<span class="keyword">if</span> <span class="keyword">not</span> validation:  </span><br><span class="line">							self._mini_batch_schedulers(i / n_batches) </span><br><span class="line">				loss = np.mean(mini_batch_losses) </span><br><span class="line">				<span class="keyword">return</span> loss</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_mini_batch&#x27;</span>, _mini_batch)</span><br></pre></td></tr></table></figure>
+
+<h3 id="调度器路径"><a href="#调度器路径" class="headerlink" title="调度器路径"></a>调度器路径</h3><p>在尝试几个调度器之前，让我们在我们的模型上运行LR范围测试：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">device = <span class="string">&#x27;cuda&#x27;</span> <span class="keyword">if</span> torch.cuda.is_available() <span class="keyword">else</span> <span class="string">&#x27;cpu&#x27;</span> torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model = nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;linear&#x27;</span>, nn.Linear(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">loss_fn = nn.MSELoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer = optim.SGD(</span><br><span class="line">    model.parameters(), lr=<span class="number">1e-3</span>, momentum=<span class="number">0.9</span>, nesterov=<span class="literal">False</span></span><br><span class="line">  )</span><br><span class="line">tracking = lr_range_test(model, loss_fn, optimizer, device,</span><br><span class="line">                           train_loader, end_lr=<span class="number">1</span>, num_iter=<span class="number">100</span>)</span><br></pre></td></tr></table></figure>
+
+<p>我们从非常低的开始（lr&#x3D;1e-3），并使用指数增量一直测试到1.0（end_lr）。结果表明，学习率介于0.01和0.1之间（对应于曲线下降部分的中心）。我们知道，0.1的学习率是有效的。例如，更保守的值选择是0.025，因为它是曲线下降部分的中点。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F41520622-f270-461d-b344-67c8f02e1b5a%2FIMG_0270.jpeg?table=block&id=92a30ece-9707-45d4-afef-f5515810096e&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1830&userId=&cache=v2"></p>
+<p>让我们大胆一点！首先，我们用初始学习率（0.1）的选择来定义优化器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">optimizer = optim.SGD(</span><br><span class="line">      model.parameters(), lr=<span class="number">0.1</span>, momentum=<span class="number">0.9</span>, nesterov=<span class="literal">False</span></span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>然后，我们选择一个调度器，将学习率一直降低到0.025。如果我们选择步进调度器，我们可以每四个纪元将学习率减半（gamma&#x3D;0.5）。如果我们选择一个循环调度器，我们可以每四个时代在两个极端之间摆化学习率（20个迷你批次：10个向上，10个向下）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">step_scheduler = StepLR(optimizer, step_size=<span class="number">4</span>, gamma=<span class="number">0.5</span>)</span><br><span class="line">cyclic_scheduler = CyclicLR(</span><br><span class="line">      optimizer, base_lr=<span class="number">0.025</span>, max_lr=<span class="number">0.1</span>,</span><br><span class="line">      step_size_up=<span class="number">10</span>, mode=<span class="string">&#x27;triangular2&#x27;</span></span><br><span class="line">  )</span><br></pre></td></tr></table></figure>
+
+<p>在将每个调度器应用于具有势头的SGD和具有Nesterov势头的SGD后，我们获得了以下路径：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fcd87f023-89e3-477f-89db-c851d834c8de%2FIMG_0271.jpeg?table=block&id=c362fd84-0936-4086-b128-229ab9d78a49&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1890&userId=&cache=v2"></p>
+<p>在组合中添加调度器似乎有助于优化器实现更稳定的路径，实现最低。</p>
+<blockquote>
+<p>使用调度器背后的一般想法是允许优化器在探索损失表面（高学习率阶段）和瞄准最小（低学习率）之间交替阶段）。</p>
+</blockquote>
+<p>调度器对损失轨迹有什么影响？我们去看看吧！</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Ffb818aab-8189-4168-9148-3e541fc7738e%2FIMG_0272.jpeg?table=block&id=f927359d-bb7b-4b6a-9dad-c5a90d60e292&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1850&userId=&cache=v2"></p>
+<p>分辨同一行曲线之间的区别肯定更难，除了Nesterov的动量和循环调度器的组合，这可以更平稳地减少训练损失。</p>
+<h3 id="自适应与循环"><a href="#自适应与循环" class="headerlink" title="自适应与循环"></a>自适应与循环</h3><p>虽然自适应学习率被认为是周期性学习率的竞争对手，但这并不妨碍您在使用Adam时将它们与循环学习率结合起来。当Adam使用其EWMA调整梯度时，循环政策修改了学习率本身，因此他们确实可以一起工作。</p>
+<p>在学习率主题中，还有很多东西需要学习：本节只是对该主题的简短介绍。</p>
+<h2 id="回顾"><a href="#回顾" class="headerlink" title="回顾"></a>回顾</h2><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Loads temporary dataset to build normalizer</span></span><br><span class="line">temp_transform = Compose([Resize(<span class="number">28</span>), ToTensor()])</span><br><span class="line">temp_dataset = ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>, transform=temp_transform)</span><br><span class="line">temp_loader = DataLoader(temp_dataset, batch_size=<span class="number">16</span>)</span><br><span class="line">normalizer = StepByStep.make_normalizer(temp_loader)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds transformation, datasets and data loaders</span></span><br><span class="line">composer = Compose([Resize(<span class="number">28</span>),</span><br><span class="line">                    ToTensor(),</span><br><span class="line">                    normalizer])</span><br><span class="line"></span><br><span class="line">train_data = ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>, transform=composer)</span><br><span class="line">val_data = ImageFolder(root=<span class="string">&#x27;rps-test-set&#x27;</span>, transform=composer)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds a loader of each set</span></span><br><span class="line">train_loader = DataLoader(train_data, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_loader = DataLoader(val_data, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>在模型配置部分，我们可以使用带有Nesterov动量和更高辍学概率的SGD来增加正则化：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">13</span>)</span><br><span class="line">model_cnn3 = CNN2(n_feature=<span class="number">5</span>, p=<span class="number">0.5</span>)</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_cnn3 = optim.SGD(model_cnn3.parameters(), lr=<span class="number">1e-3</span>, momentum=<span class="number">0.9</span>, nesterov=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+<p>在实际训练之前，我们可以运行LR范围测试：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn3 = StepByStep(model_cnn3, multi_loss_fn, optimizer_cnn3)</span><br><span class="line">tracking, fig = sbs_cnn3.lr_range_test(train_loader, end_lr=<span class="number">2e-1</span>, num_iter=<span class="number">100</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fb8508311-3833-4cd9-9427-e78b9630ddf6%2FIMG_0273.jpeg?table=block&id=eb30b95d-d97c-4386-b4cb-31e04fdf6908&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=960&userId=&cache=v2"></p>
+<p>该测试建议学习率在0.01左右，因此我们重新创建优化器，并将其设置在StepByStep实例中。</p>
+<p>我们还可以使用建议的学习率作为周期调度器的上限。对于它的步长，我们可以使用数据加载器的长度，因此学习率在一个时代一直上升，在下一个时代一直下降——一个两个时代周期。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">optimizer_cnn3 = optim.SGD(model_cnn3.parameters(), lr=<span class="number">0.01</span>, momentum=<span class="number">0.9</span>, nesterov=<span class="literal">True</span>)</span><br><span class="line">sbs_cnn3.set_optimizer(optimizer_cnn3)</span><br><span class="line"></span><br><span class="line">scheduler = CyclicLR(optimizer_cnn3, base_lr=<span class="number">1e-3</span>, max_lr=<span class="number">0.01</span>, step_size_up=<span class="built_in">len</span>(train_loader), mode=<span class="string">&#x27;triangular2&#x27;</span>)</span><br><span class="line">sbs_cnn3.set_lr_scheduler(scheduler)</span><br></pre></td></tr></table></figure>
+
+<p>做完这个之后，它像往常一样进行训练：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_cnn3.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_cnn3.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = sbs_cnn3.plot_losses()</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F76522640-1beb-43ac-ae60-8b8f382fc2cf%2FIMG_0274.jpeg?table=block&id=ad1463e4-1327-4b25-ac89-1b008e876e4a&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1870&userId=&cache=v2"></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(StepByStep.loader_apply(</span><br><span class="line">train_loader, sbs_cnn3.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>),</span><br><span class="line">        StepByStep.loader_apply(</span><br><span class="line">            val_loader, sbs_cnn3.correct).<span class="built_in">sum</span>(axis=<span class="number">0</span>))</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">2511</span>, <span class="number">2520</span>]) tensor([<span class="number">336</span>, <span class="number">372</span>])</span><br></pre></td></tr></table></figure>
+
+<p>看起来不错！更低的损失，99.64%的训练准确率和90.32%的验证准确性。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>在本章中，我们介绍了用于正则化的退出层，并专注于不同优化器的内部工作以及学习率在过程中的作用。这就是我们所涵盖的：</p>
+<ul>
+<li>使用临时数据加载器计算通道统计信息来构建Normalize()变换</li>
+<li>使用Normalize()标准化图像数据集</li>
+<li>了解多个通道上的卷积是如何工作的</li>
+<li>用两个典型的卷积块和退出层构建一个更高级的模型</li>
+<li>了解Dropout概率如何产生输出分布</li>
+<li>在辍学层中观察火车和评估模式的效果</li>
+<li>可视化退出层的正则化效果</li>
+<li>使用学习率范围测试来查找学习率候选人的间隔</li>
+<li>计算梯度和平方梯度的偏差校正指数加权移动平均线，以实现像Adam优化器这样的自适应学习率</li>
+<li>在可学习参数的张量上使用register_hook()捕获梯度</li>
+<li>使用之前实现的attach_hooks()捕获参数</li>
+</ul>
+<p>做法</p>
+<ul>
+<li>可视化不同优化器为更新参数而采取的路径</li>
+<li>了解动量是如何计算的及其对参数更新的影响</li>
+<li>（重新）发现Nesterov的势头实施的聪明的展望技巧</li>
+<li>了解不同类型的调度器：纪元、验证丢失和迷你批次</li>
+<li>在培训循环中包括学习率调度器</li>
+<li>可视化调度器对更新路径的影响参数</li>
+</ul>
+<p>恭喜！您刚刚了解了通常用于训练深度学习模型的工具：自适应学习率、动量和学习率调度器。本章远不是关于这个主题的详尽课程，而是让您很好地了解了基本的构建模块。您还学习了如何利用辍学来减少过度拟合，从而改善泛化。</p>
+<p>在下一章中，我们将学习如何利用预训练模型的力量进行传输学习，我们将介绍流行架构的一些关键组件，如1x1卷积、批量标准化层和剩余连接。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Adam/" rel="tag">Adam</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CNN/" rel="tag">CNN</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/PyTorch/" rel="tag">PyTorch</a></li></ul></div><div class="post-nav"><a class="next" href="/2024/02/26/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/">卷积神经网络</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a> <a href="/tags/%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/" style="font-size: 15px;">梯度下降</a> <a href="/tags/%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92/" style="font-size: 15px;">线性回归</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/FATE/" style="font-size: 15px;">FATE</a> <a href="/tags/%E4%BC%98%E5%8C%96%E5%99%A8/" style="font-size: 15px;">优化器</a> <a href="/tags/%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0/" style="font-size: 15px;">损失函数</a> <a href="/tags/sigmoid/" style="font-size: 15px;">sigmoid</a> <a href="/tags/MSELoss/" style="font-size: 15px;">MSELoss</a> <a href="/tags/Linear/" style="font-size: 15px;">Linear</a> <a href="/tags/Sequential/" style="font-size: 15px;">Sequential</a> <a href="/tags/TensorBoard/" style="font-size: 15px;">TensorBoard</a> <a href="/tags/matplotlib/" style="font-size: 15px;">matplotlib</a> <a href="/tags/Logits/" style="font-size: 15px;">Logits</a> <a href="/tags/Scikit-Learn/" style="font-size: 15px;">Scikit-Learn</a> <a href="/tags/BCELoss/" style="font-size: 15px;">BCELoss</a> <a href="/tags/Scikit/" style="font-size: 15px;">Scikit</a> <a href="/tags/Sigmod/" style="font-size: 15px;">Sigmod</a> <a href="/tags/ReLU/" style="font-size: 15px;">ReLU</a> <a href="/tags/Leaky-ReLU/" style="font-size: 15px;">Leaky ReLU</a> <a href="/tags/TanH/" style="font-size: 15px;">TanH</a> <a href="/tags/PreReLU/" style="font-size: 15px;">PreReLU</a> <a href="/tags/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0/" style="font-size: 15px;">激活函数</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E6%A8%A1%E5%9E%8B/" style="font-size: 15px;">深度模型</a> <a href="/tags/softmax/" style="font-size: 15px;">softmax</a> <a href="/tags/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">卷积神经网络</a> <a href="/tags/Adam/" style="font-size: 15px;">Adam</a> <a href="/tags/CNN/" style="font-size: 15px;">CNN</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/03/04/Ai%E5%9B%BE%E5%83%8F%E8%AF%86%E5%88%AB%E4%B9%8B-%E5%89%AA%E5%88%80%E7%9F%B3%E5%A4%B4%E5%B8%83/">Ai图像识别之--剪刀石头布</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/26/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/">卷积神经网络</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/23/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E5%AF%B9%E7%89%B9%E5%BE%81%E7%A9%BA%E9%97%B4%E7%9A%84%E5%BD%B1%E5%93%8D/">激活函数对特征空间的影响</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/21/%E4%BD%BF%E7%94%A8AI%E8%BF%9B%E8%A1%8C%E5%9B%BE%E5%83%8F%E5%88%86%E7%B1%BB/">使用AI进行图像分类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/07/%E7%94%A8AI%E6%A8%A1%E5%9E%8B%E5%A4%84%E7%90%86%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98/">用AI模型处理分类问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E9%87%8D%E6%96%B0%E6%80%9D%E8%80%83%E8%AE%AD%E7%BB%83%E5%BE%AA%E7%8E%AF/">重新思考训练循环</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/26/%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92%E9%97%AE%E9%A2%98/">一个简单的线性回归问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/Fate%E7%9A%84%E5%8D%95%E6%9C%BA%E9%83%A8%E7%BD%B2/">Fate的单机部署</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/%E5%8F%AF%E8%A7%86%E5%8C%96%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/">可视化梯度下降</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+  });
+</script><script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML" async></script><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
