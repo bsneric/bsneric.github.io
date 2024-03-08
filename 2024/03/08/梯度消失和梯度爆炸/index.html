@@ -1,0 +1,297 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>梯度消失和梯度爆炸 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">梯度消失和梯度爆炸</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">梯度消失和梯度爆炸</h1><div class="post-meta">2024-03-08</div><div class="post-content"><p>本章我们将学习的内容包括：</p>
+<ul>
+<li><p>使用初始化方案，解决梯度消失问题</p>
+</li>
+<li><p>了解批量归一化对梯度消失的影响</p>
+</li>
+<li><p>使用梯度裁剪方案解决梯度爆照的问题</p>
+</li>
+<li><p>梯度裁剪的不同方式：按元素逐一、使用其范数以及使用钩子方法</p>
+</li>
+<li><p>理解梯度裁剪在反向传导之后和期间的不同。</p>
+</li>
+</ul>
+<p>本章导入依赖如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="keyword">from</span> sklearn.datasets <span class="keyword">import</span> make_regression</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader,TensorDataset</span><br><span class="line"><span class="keyword">from</span> stepbystep.v3 <span class="keyword">import</span> StepByStep</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> data_generation.ball <span class="keyword">import</span> load_data</span><br></pre></td></tr></table></figure>
+
+
+<p>在这一节中，我们将再次讨论梯度问题。梯度以及学习率是让模型更好学习的关键。我们在之前详细讨论过这两个概念，但是我们一直假设梯度的表现会很好，并且学习率也是有意义的。不幸的是，不总是这样的，有时候梯度可能会表现的很差：它们有时候会消失，有时候会爆照。无论是哪种情况，我们都需要小心的处理它们，所以接下来让我们具体看看如何解决这些问题。</p>
+<h2 id="梯度消失"><a href="#梯度消失" class="headerlink" title="梯度消失"></a>梯度消失</h2><p>你还记得我们如何告诉 PyTorch 为我们计算梯度吗？ 它从损失值开始，然后调用backward()方法，该方法返回到第一层。 简而言之，这就是反向传播。 它对于具有几个隐藏层的模型效果很好，但随着模型变得更深，为初始层中的权重计算的梯度变得越来越小。 这就是所谓的梯度消失问题，它一直是训练更深层次模型的主要障碍。</p>
+<blockquote>
+<p>为什么这中情况会很糟糕？</p>
+</blockquote>
+<p>如果梯度消失——也就是说，如果它们接近于零——更新权重几乎不会改变它们。 换句话说，模型没有学习任何东西；而是学习任何东西。 它被卡住了。</p>
+<blockquote>
+<p>为什么会发生这种情况？</p>
+</blockquote>
+<p>我们可以将其归咎于（臭名昭著的）“内部协变量转变”。 但是，我不讨论它，而是举例说明。</p>
+<h2 id="球数据集和块模型"><a href="#球数据集和块模型" class="headerlink" title="球数据集和块模型"></a>球数据集和块模型</h2><p>让我们使用从十维球中抽取的 1,000 个随机点的数据集（这看起来比实际情况更奇特；您可以将其视为包含 1,000 个点的数据集，每个点有 10 个特征），这样每个特征的均值和单位标准差均为零。 在此数据集中，位于球半径一半以内的点被标记为负例，而其余点被标记为正例。 这是一个熟悉的二元分类任务。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">X,y=load_data(n_points=<span class="number">1000</span>,n_dims=<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>接下来我们用这些数据创建一个数据集和一个数据加载器（这次不是小批量数据）</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ball_dataset = TensorDataset(torch.as_tensor(X).<span class="built_in">float</span>(), torch.as_tensor(y).<span class="built_in">float</span>())</span><br><span class="line">ball_loader = DataLoader(ball_dataset, batch_size=<span class="built_in">len</span>(X))</span><br></pre></td></tr></table></figure>
+
+
+<p>数据准备部分完成。 接下来是模型配置。为了说明梯度消失问题，我们需要一个比迄今为止构建的模型更深的模型。 我们将其称为“块”模型：它是几个堆叠在一起的隐藏层（和激活函数）的块，每层包含相同数量的隐藏单元（神经元）。</p>
+<p>我没有手动构建模型，而是创建了一个函数 build_model()，它允许我们配置这样的模型。 它的主要参数是特征的数量、层数、每层隐藏单元的数量、每个隐藏层之后放置的激活函数，以及是否应该在每个激活函数之后添加批量归一化层：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">11</span>)</span><br><span class="line">n_layers = <span class="number">5</span></span><br><span class="line">n_features = X.shape[<span class="number">1</span>]</span><br><span class="line">hidden_units = <span class="number">100</span></span><br><span class="line">activation_fn = nn.ReLU</span><br><span class="line">model = build_model(n_features, n_layers, hidden_units, activation_fn, use_bn=<span class="literal">False</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>我们来看一下模型</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(model)</span><br></pre></td></tr></table></figure>
+
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">Sequential(</span><br><span class="line">  (h1): Linear(in_features=<span class="number">10</span>, out_features=<span class="number">100</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (a1): ReLU()</span><br><span class="line">  (h2): Linear(in_features=<span class="number">100</span>, out_features=<span class="number">100</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (a2): ReLU()</span><br><span class="line">  (h3): Linear(in_features=<span class="number">100</span>, out_features=<span class="number">100</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (a3): ReLU()</span><br><span class="line">  (h4): Linear(in_features=<span class="number">100</span>, out_features=<span class="number">100</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (a4): ReLU()</span><br><span class="line">  (h5): Linear(in_features=<span class="number">100</span>, out_features=<span class="number">100</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (a5): ReLU()</span><br><span class="line">  (o): Linear(in_features=<span class="number">100</span>, out_features=<span class="number">1</span>, bias=<span class="literal">True</span>)</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+
+<p>完全符合预期！ 这些层按顺序标记，并根据其角色具有前缀：h 表示线性层，a 表示激活函数，bn 表示批量归一化层，o 表示最后（输出）层。</p>
+<p>我们还缺少一个损失函数和一个优化器，接下来我们完成模型配置部分：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">loss_fn = nn.BCEWithLogitsLoss()</span><br><span class="line">optimizer = optim.SGD(model.parameters(), lr=<span class="number">1e-2</span>)</span><br></pre></td></tr></table></figure>
+
+
+<h2 id="权重、激活函数和梯度"><a href="#权重、激活函数和梯度" class="headerlink" title="权重、激活函数和梯度"></a>权重、激活函数和梯度</h2><p>为了可视化权重、激活值和梯度发生的情况，我们需要首先捕获这些值。 幸运的是，我们已经有了适合这些任务的方法：分别是 capture_parameters()、attach_hooks() 和 capture_gradients()。 我们只需要创建 StepByStep 类的实例，配置这些方法来捕获相应层的这些值，并对其进行一个迭代的训练：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">hidden_layers = [<span class="string">f&#x27;h<span class="subst">&#123;i&#125;</span>&#x27;</span> <span class="keyword">for</span> i <span class="keyword">in</span> <span class="built_in">range</span>(<span class="number">1</span>, n_layers + <span class="number">1</span>)]</span><br><span class="line">activation_layers = [<span class="string">f&#x27;a<span class="subst">&#123;i&#125;</span>&#x27;</span> <span class="keyword">for</span> i <span class="keyword">in</span> <span class="built_in">range</span>(<span class="number">1</span>, n_layers + <span class="number">1</span>)]</span><br><span class="line"></span><br><span class="line">sbs = StepByStep(model, loss_fn, optimizer)</span><br><span class="line">sbs.set_loaders(ball_loader)</span><br><span class="line">sbs.capture_parameters(hidden_layers)</span><br><span class="line">sbs.capture_gradients(hidden_layers)</span><br><span class="line">sbs.attach_hooks(activation_layers)</span><br><span class="line">sbs.train(<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>由于我们这次没有使用小批量，因此训练一个 epoch 的模型将使用所有数据点：</p>
+<ul>
+<li><p>执行一次前向传递，从而捕获初始权重并生成激活值； </p>
+</li>
+<li><p>执行一次向后传递，从而计算梯度。</p>
+</li>
+</ul>
+<p>简单起见，我还创建了一个函数 get_plot_data()，它将数据加载器和模型作为参数，并在训练一个迭代后返回捕获的值。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">parms, gradients, activations = get_plot_data(train_loader=ball_loader, model=model)</span><br></pre></td></tr></table></figure>
+
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fb9dc4e11-99ce-43df-be5b-b191fb7eb74b%2FUntitled.png?table=block&id=854e57a2-55d7-4abf-a3ff-e8d5bb39d7ef&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1370&userId=&cache=v2"></p>
+<p>在最左边的图中，我们可以看到每层的初始权重是均匀分布的，但第一个隐藏层的范围要宽得多。 这是 PyTorch 线性层使用的默认初始化方案的结果，但我们在这里不深入研究这些细节。</p>
+<p>随着数据从一层移动到下一层，激活值明显缩小。 相反，最后一层的梯度较大，并且随着梯度下降算法返回第一层而缩小。 这是梯度消失的一个简单而直接的例子。</p>
+<blockquote>
+<p>梯度也可以爆炸而不是消失。 在这种情况下，随着数据从一层移动到下一层，激活值变得越来越大，最后一层的梯度越来越小，随着我们返回到第一层，激活值逐渐增大。<br>不过，这种现象不太常见，并且可以使用称为梯度裁剪的技术更轻松地处理，该技术只需限制梯度的绝对值。 我们稍后再讨论这个问题。</p>
+</blockquote>
+<blockquote>
+<p>“我们如何防止梯度消失问题？”</p>
+</blockquote>
+<p>如果我们设法让所有层的激活值分布相似，我们就有机会实现这一点。 但是，为了实现这一目标，我们需要调整权重的方差。 如果方法合适，权重的初始分布可能会导致跨层激活值的分布更加一致。</p>
+<blockquote>
+<p>你可能没有注意到，在所有层上保持相似的激活值分布，正是批量归一化所做的事情。</p>
+</blockquote>
+<p>因此，如果您使用批量归一化，梯度消失可能不是问题。 但是，在使用批量归一化层之前，还有另一种解决问题的方法，这就是下一节的主题。</p>
+<h2 id="初始化方案"><a href="#初始化方案" class="headerlink" title="初始化方案"></a>初始化方案</h2><p>初始化方案是调整权重初始分布的一种巧妙方法。 这一切都是为了选择最佳标准差来从正态或均匀分布中抽取随机权重。 在本节中，我们将简要讨论两种最传统的方案，Xavier (Glorot) 和 Kaiming (He)，以及如何在 PyTorch 中手动初始化权重。 有关这些初始化方案的内部工作原理的更详细解释，请查看我的文章：<a target="_blank" rel="noopener" href="https://bit.ly/3eCfJ4h">“Hyper- parameters in Action! Part II — Weight Initializers.”</a></p>
+<p>Xavier (Glorot) 初始化方案由 Xavier Glorot 和 Yoshua Bengio 开发，旨在与双曲正切 (TanH) 激活函数一起使用。 根据上下文，它被称为 Xavier 或 Glorot 初始化。 在 PyTorch 中，它对应的是 nn.init.xavier_uniform() 和 nn.init.xavier_normal()。</p>
+<p>Kaiming (He) 初始化方案是由 Kaiming He（是的，ResNet 架构中的同一个人）等人开发的。 旨在与修正线性单元 (ReLU) 激活函数一起使用。 根据上下文，它被称为 Kaiming 或 He 初始化。 在 PyTorch 中，它对应的是 nn.init.kaiming_uniform() 和 nn.init.kaiming_normal()。</p>
+<blockquote>
+<p>“我应该使用均匀分布还是正态分布？”</p>
+</blockquote>
+<p>它应该不会产生太大的差异，但<strong>使用均匀分布</strong>通常会比其他方法提供更好的结果。</p>
+<blockquote>
+<p>“我必须手动初始化权重吗？”</p>
+</blockquote>
+<p>不一定。 例如，如果你正在使用迁移学习，这几乎不是问题，因为大多数模型都已经过训练，并且可训练部分的错误初始化对模型训练几乎没有影响。 此外，正如我们稍后将看到的，使用批量归一化层可以使模型在权重初始化错误时的容错性更好。</p>
+<blockquote>
+<p>“PyTorch 的默认设置怎么样？我不能简单地相信它们吗？”</p>
+</blockquote>
+<p>信任但要验证。 每个 PyTorch 层在 reset_parameters() 方法中都有自己的默认权重初始化。 例如，nn.Linear 层使用从均匀分布中得出的 Kaiming (He) 方案进行初始化：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># nn.Linear.reset_parameters</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">reset_parameters</span>(<span class="params">self</span>) -&gt; <span class="literal">None</span>:</span><br><span class="line">    init.kaiming_uniform_(self.weight, a=math.sqrt(<span class="number">5</span>))</span><br><span class="line">    <span class="keyword">if</span> self.bias <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">        fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)</span><br><span class="line">        bound = <span class="number">1</span> / math.sqrt(fan_in)</span><br><span class="line">        init.uniform_(self.bias, -bound, bound)</span><br></pre></td></tr></table></figure>
+
+
+<p>此外，它还根据“扇入”初始化偏差，“扇入”只是前一层中的单元数量。</p>
+<blockquote>
+<p>重要提示：每个默认初始化都有自己的假设，在这种特殊情况下，假设（在 reset_parameters() 方法中）nn.Linear 层后面将跟随一个泄漏 ReLU（Kaiming 中非线性参数的默认值） 初始化），负斜率等于五的平方根（Kaiming 初始化中的“a”参数）。</p>
+</blockquote>
+<p>如果您的模型不遵循这些假设，您可能会遇到问题。 例如，我们的模型使用常规 ReLU 而不是泄漏 ReLU，因此默认初始化方案失效了，最终导致梯度消失。</p>
+<blockquote>
+<p>“我怎么知道呢？”</p>
+</blockquote>
+<p>不幸的是，没有简单的方法可以解决这个问题。 你可以检查层的 reset_parameters() 方法并从代码中找出其假设（就像我们刚才所做的那样），或者，如果从头开始训练更深层次的模型，最好手动初始化层，以便拥有完全的控制权。</p>
+<blockquote>
+<p>现在不要太担心初始化方案！ 这已经是一个有点高级的主题了，但我认为在完成批量归一化之后值得介绍它。 正如我之前提到的，无论如何，你可能会使用具有更深层模型的迁移学习。</p>
+</blockquote>
+<blockquote>
+<p>“如果我真的想尝试自己初始化权重，该怎么办？”</p>
+</blockquote>
+<p>让我们看一个简单的例子。 假设您想使用 Kaiming 均匀方案以及适当的权重非线性函数来初始化所有线性层，并将所有偏差设置为零。 你必须构建一个以图层作为参数的函数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">weights_init</span>(<span class="params">m</span>):</span><br><span class="line">    <span class="keyword">if</span> <span class="built_in">isinstance</span>(m, nn.Linear):</span><br><span class="line">        nn.init.kaiming_uniform_(m.weight, nonlinearity=<span class="string">&#x27;relu&#x27;</span>)</span><br><span class="line">        <span class="keyword">if</span> m.bias <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">            nn.init.zeros_(m.bias)</span><br></pre></td></tr></table></figure>
+
+
+<p>该函数可以设置作为参数传递的层的权重和偏差属性。 请注意，nn.init 中用于初始化属性的两个方法末尾都有一个下划线，因此它会立即更改值。</p>
+<p>要实际将初始化方案应用于模型，只需调用模型的 apply() 方法，它将递归地将初始化函数应用于其所有内部层：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">with</span> torch.no_grad():</span><br><span class="line">    model.apply(weights_init)</span><br></pre></td></tr></table></figure>
+
+
+<p>在初始化&#x2F;修改模型的权重和偏差时，还应该使用 no_grad() 上下文管理器。</p>
+<p>为了说明正确初始化的效果，我绘制了“块”模型的三种不同配置的激活值和梯度：使用正常初始化的 sigmoid 激活、使用 Xavier 均匀初始化的 TanH 激活以及使用 Kaiming 均匀初始化的 ReLU 激活函数。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Ffb31fa68-6bdf-40e8-9f4f-7043d1d06619%2FUntitled.png?table=block&id=7b9eece3-fea6-41f1-a730-7353da16dcf2&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1430&userId=&cache=v2"></p>
+<p>嗯，在深度模型中使用 sigmoid 函数作为激活函数是没有希望的。 但是，对于另外两个，应该清楚的是，权重的正确初始化会导致所有层上的激活值和梯度分布更加稳定。</p>
+<p>尽管初始化方案绝对是解决梯度消失问题的一种聪明方法，但当将批量归一化层添加到模型中时，它们就没用了。</p>
+<h2 id="批量初始化"><a href="#批量初始化" class="headerlink" title="批量初始化"></a>批量初始化</h2><p>由于批量归一化层应该在各层之间产生相似的激活值（和梯度）分布，因此我们必须问自己：</p>
+<blockquote>
+<p>我们能摆脱糟糕的初始化吗？”</p>
+</blockquote>
+<p>我们可以！ 让我们比较“块”模型的另外三种不同配置的激活值和梯度：ReLU 激活和正常初始化、ReLU 激活和 Kaiming 均匀初始化以及 ReLU 激活和正常初始化，然后是批量归一化层。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa60b7c52-7e5d-4f23-a710-9d92c0825002%2FUntitled.png?table=block&id=4199f033-baca-4bfc-9c26-0354ef672983&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1510&userId=&cache=v2"></p>
+<p>最左边的图向我们展示了糟糕的初始化方案的结果：梯度消失。 中心图向我们展示了正确初始化方案的结果。 最后，最右边的图向我们展示了批量归一化确实可以弥补错误的初始化。</p>
+<p>不过，并非所有不良梯度都会消失：一些不良梯度会爆炸！</p>
+<h2 id="梯度爆炸"><a href="#梯度爆炸" class="headerlink" title="梯度爆炸"></a>梯度爆炸</h2><p>问题的根源是相同的：模型越来越深。 如果模型只有几层，那么一个大的梯度不会造成任何损害。 但是，如果有很多层，梯度可能最终会无法控制地增长。 这就是所谓的梯度爆炸问题，而且很容易发现：只需在损失中查找 NaN 值即可。 如果是这种情况，则意味着梯度变得如此之大，以至于无法再正确表示。</p>
+<blockquote>
+<p>为什么会发生梯度爆炸？</p>
+</blockquote>
+<p>可能存在复合效应（考虑将相对较小的数字（例如 1.5）提高到较大的幂（例如 20）），特别是在循环神经网络（第 8 章的主题）中，因为沿着一个序列重复使用相同的权重。 但是，还有其他原因：学习率可能太高，或者目标变量（在回归问题中）可能具有很大的值范围。 让我来说明一下。</p>
+<h2 id="数据生成与数据准备"><a href="#数据生成与数据准备" class="headerlink" title="数据生成与数据准备"></a>数据生成与数据准备</h2><p>让我们使用 Scikit-Learn 的 make_regression() 生成一个包含 1,000 个点的数据集，每个点有 10 个特征，并带有一点噪声：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">X_reg, y_reg = make_regression(n_samples=<span class="number">1000</span>, n_features=<span class="number">10</span>, noise=<span class="number">0.1</span>, random_state=<span class="number">42</span>)</span><br><span class="line"></span><br><span class="line">X_reg = torch.as_tensor(X_reg).<span class="built_in">float</span>()</span><br><span class="line">y_reg = torch.as_tensor(y_reg).<span class="built_in">float</span>().view(-<span class="number">1</span>, <span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">dataset = TensorDataset(X_reg, y_reg)</span><br><span class="line">train_loader = DataLoader(dataset=dataset, batch_size=<span class="number">32</span>, shuffle=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>尽管我们无法绘制十维回归，但我们仍然可以可视化特征和目标值的分布。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa55530d5-4864-4a55-8585-4d03a224c511%2FUntitled.png?table=block&id=f7d25313-d93c-4813-81f0-3ceced615273&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1520&userId=&cache=v2"></p>
+<p>我们的特征值一切都很好，因为它们在典型的标准化范围 (-3, 3) 内。 不过，目标值的范围非常不同，从 -400 到 400。例如，如果目标变量表示货币值，则这些范围相当常见。 当然，我们也可以标准化目标值，但这会破坏梯度爆炸的示例！</p>
+<h2 id="模型配置与训练"><a href="#模型配置与训练" class="headerlink" title="模型配置与训练"></a>模型配置与训练</h2><p>我们可以构建一个相当简单的模型来解决这个回归问题：一个具有 15 个单元的隐藏层、一个 ReLU 作为激活函数和一个输出层的网络。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">11</span>)</span><br><span class="line">model = nn.Sequential()</span><br><span class="line">model.add_module(<span class="string">&#x27;fc1&#x27;</span>, nn.Linear(<span class="number">10</span>, <span class="number">15</span>))</span><br><span class="line">model.add_module(<span class="string">&#x27;act&#x27;</span>, nn.ReLU())</span><br><span class="line">model.add_module(<span class="string">&#x27;fc2&#x27;</span>, nn.Linear(<span class="number">15</span>, <span class="number">1</span>))</span><br><span class="line">optimizer = optim.SGD(model.parameters(), lr=<span class="number">0.01</span>)</span><br><span class="line">loss_fn = nn.MSELoss()</span><br></pre></td></tr></table></figure>
+
+
+<p>在训练之前，让我们设置 StepByStep 类的实例来捕获隐藏层 (fc1) 中权重的梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">sbs_reg = StepByStep(model, loss_fn, optimizer)</span><br><span class="line">sbs_reg.set_loaders(train_loader)</span><br><span class="line">sbs_reg.capture_gradients([<span class="string">&#x27;fc1&#x27;</span>])</span><br><span class="line">sbs_reg.train(<span class="number">2</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>事实证明，两个纪元已经足以获得梯度爆炸。 耶！ 好吧，也许不是“耶”，但你知道我的意思，对吧？</p>
+<p>我们来看看损失值：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sbs_reg.losses</span><br></pre></td></tr></table></figure>
+
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[<span class="number">16985.014358520508</span>, nan]</span><br></pre></td></tr></table></figure>
+
+
+<p>这就是我们正在寻找的 NaN 值。 这种现象不叫损失爆炸，而是爆炸梯度，所以也在梯度那里寻找 NaN。 由于隐藏层中有 150 个权重，每个迭代有 32 个小批量（导致两个迭代内有 64 次梯度计算），因此更容易查看用于更新参数的平均梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">grads = np.array(sbs_reg._gradients[<span class="string">&#x27;fc1&#x27;</span>][<span class="string">&#x27;weight&#x27;</span>])</span><br><span class="line"><span class="built_in">print</span>(grads.mean(axis=(<span class="number">1</span>, <span class="number">2</span>)))</span><br></pre></td></tr></table></figure>
+
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">[ <span class="number">2.11965225e+00</span> -<span class="number">4.36919605e+00</span> -<span class="number">1.04062873e+01</span> -<span class="number">1.31978525e+01</span></span><br><span class="line">  <span class="number">2.00864214e+01</span>  <span class="number">5.52626748e+01</span>  <span class="number">6.59739342e+00</span> -<span class="number">6.59043951e+00</span></span><br><span class="line"> -<span class="number">1.84772668e+01</span> -<span class="number">1.10734661e+01</span>  <span class="number">1.44460931e+01</span> -<span class="number">1.05419574e+01</span></span><br><span class="line">  <span class="number">1.82707417e+01</span> -<span class="number">4.65859312e+01</span>  <span class="number">5.56300779e+00</span>  <span class="number">2.31181872e+01</span></span><br><span class="line">  <span class="number">1.79879648e+01</span>  <span class="number">8.46512737e+00</span>  <span class="number">1.16871381e+01</span> -<span class="number">6.46955387e+00</span></span><br><span class="line">  <span class="number">2.21238665e+01</span> -<span class="number">1.19218020e+01</span> -<span class="number">8.84768396e-01</span>  <span class="number">1.40629664e+01</span></span><br><span class="line"> -<span class="number">2.56725244e+01</span>  <span class="number">7.58224031e+00</span> -<span class="number">1.48623960e+00</span> -<span class="number">8.24287116e+00</span></span><br><span class="line">  <span class="number">1.08827572e+01</span> -<span class="number">7.76711910e-01</span>  <span class="number">1.27160310e+01</span> -<span class="number">3.39174802e+01</span></span><br><span class="line"> -<span class="number">2.70773718e+01</span> -<span class="number">7.08280798e+00</span>  <span class="number">7.41404259e-01</span>  <span class="number">3.29017272e-01</span></span><br><span class="line">  <span class="number">5.42439738e+00</span>  <span class="number">4.82576235e+00</span>  <span class="number">1.56531771e+01</span> -<span class="number">3.34186363e+00</span></span><br><span class="line">  <span class="number">5.83023831e+01</span> -<span class="number">1.39760193e+02</span>  <span class="number">9.26939094e+01</span> -<span class="number">2.40153323e+02</span></span><br><span class="line">  <span class="number">2.24924479e+03</span> -<span class="number">2.07238688e+07</span>  <span class="number">1.47232330e+19</span>             nan</span><br><span class="line">             nan             nan             nan             nan</span><br><span class="line">             nan             nan             nan             nan</span><br><span class="line">             nan             nan             nan             nan</span><br><span class="line">             nan             nan             nan             nan]</span><br></pre></td></tr></table></figure>
+
+
+<p>第一个 NaN 出现在第 44 次更新时，但爆发是在第 41 次更新时开始的：平均梯度每隔一个迭代从数百 (1e+02) 到数十亿 (1e+09)，再到数百万 (1e+26) 或其他任何值，之后就一直是NaN。</p>
+<blockquote>
+<p>如何解决这个问题？</p>
+</blockquote>
+<p>一方面，我们可以标准化目标值或尝试较低的学习率（如0.001）。 另一方面，我们可以简单地进行梯度裁剪。</p>
+<h2 id="梯度裁剪"><a href="#梯度裁剪" class="headerlink" title="梯度裁剪"></a>梯度裁剪</h2><p>梯度裁剪非常简单：选择一个值并裁剪比这个选择的值更高（绝对值）的梯度。 实际上，还有一个小细节：你可以为每个梯度选择一个值，或者为所有梯度的范数选择一个值。 为了说明这两种机制，让我们随机生成一些参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">parm = nn.Parameter(torch.randn(<span class="number">2</span>, <span class="number">1</span>))</span><br><span class="line">fake_grads = torch.tensor([[<span class="number">2.5</span>], [<span class="number">.8</span>]])</span><br></pre></td></tr></table></figure>
+
+
+<p>我们生成了上面的假梯度，因此我们可以手动设置它们，就好像它们是随机参数的计算梯度一样。 我们将使用这些梯度值来说明进行裁剪的两种不同方法。</p>
+<h3 id="值裁剪"><a href="#值裁剪" class="headerlink" title="值裁剪"></a>值裁剪</h3><p>这是最直接的方法：它按元素剪辑梯度，使它们保持在 [-clip_value, +clip_value] 范围内。 我们可以使用 PyTorch 的 nn.utils.clip_grad_value_() 就地剪辑梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">parm.grad = fake_grads.clone()</span><br><span class="line"><span class="comment">#梯度值裁剪</span></span><br><span class="line">nn.utils.clip_grad_value_(parm, clip_value=<span class="number">1.0</span>)</span><br><span class="line">parm.grad.view(-<span class="number">1</span>,)</span><br></pre></td></tr></table></figure>
+
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">1.0000</span>, <span class="number">0.8000</span>])</span><br></pre></td></tr></table></figure>
+
+
+<p>第一个梯度被剪切，另一个保持其原始值。 没有比这更简单的了。</p>
+<p>现在，暂停片刻，将上面的梯度视为梯度下降的步骤，沿着两个不同的维度将损失表面导航到（某个）最小值。 如果我们剪掉其中一些步骤会发生什么？ 我们实际上正在改变其走向最小值的方向。 下图说明了原始向量和剪裁向量。</p>
+<p>通过裁剪梯度值，我们以这样的方式修改梯度，不仅步长更小，而且方向不同。 这是一个问题吗？ 不，不一定。 我们能避免改变方向吗？ 是的，我们可以，这就是范数裁剪的好处。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F7aeebf90-667c-4fa6-8ce5-e386304c4b9d%2FUntitled.png?table=block&id=a38bdad6-21ae-4ad3-9a4a-a41df2eca048&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=890&userId=&cache=v2"></p>
+<h4 id="反向钩子"><a href="#反向钩子" class="headerlink" title="反向钩子"></a>反向钩子</h4><p>正如我们在第 6 章中看到的，register_hook() 方法将反向钩子函数注册到给定参数的张量。 钩子函数将梯度作为输入，并可能返回修改后的或剪切的梯度。 每次计算相对于该张量的梯度时都会调用钩子函数； 这意味着，与其他方法不同，它可以在反向传播期间剪切梯度。</p>
+<p>下面的代码将钩子附加到模型的所有参数，从而动态执行梯度裁剪：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">clip_backprop</span>(<span class="params">model, clip_value</span>):</span><br><span class="line">    handles = []</span><br><span class="line">    <span class="keyword">for</span> p <span class="keyword">in</span> model.parameters():</span><br><span class="line">        <span class="keyword">if</span> p.requires_grad:</span><br><span class="line">            func = <span class="keyword">lambda</span> grad: torch.clamp(grad, </span><br><span class="line">                                            -clip_value,</span><br><span class="line">                                            clip_value)</span><br><span class="line">            handle = p.register_hook(func)</span><br><span class="line">            handles.append(handle)</span><br><span class="line">    <span class="keyword">return</span> handles</span><br></pre></td></tr></table></figure>
+
+
+<p>不要忘记，在使用完钩子后，应该使用handle.remove() 来删除它们。</p>
+<h3 id="范数裁剪（或梯度缩放）"><a href="#范数裁剪（或梯度缩放）" class="headerlink" title="范数裁剪（或梯度缩放）"></a>范数裁剪（或梯度缩放）</h3><p>虽然值裁剪是逐元素操作，但范数裁剪会计算所有梯度的范数，就好像它们连接成单个向量一样。如果（且仅当）范数超过裁剪值，则梯度会按比例缩小以匹配所需的范数； 否则他们会保留自己的值。 我们可以使用 PyTorch 的 nn.utils.clip_grad_norm_() 就地缩放梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">parm.grad = fake_grads.clone()</span><br><span class="line"><span class="comment"># Gradient Norm Clipping</span></span><br><span class="line">nn.utils.clip_grad_norm_(parm, max_norm=<span class="number">1.0</span>, norm_type=<span class="number">2</span>)</span><br><span class="line">fake_grads.norm(), parm.grad.view(-<span class="number">1</span>,), parm.grad.norm()</span><br></pre></td></tr></table></figure>
+
+
+<p>我们的假梯度的范数是 2.6249，我们将范数剪裁为 1.0，因此梯度缩放了 0.3810 倍。</p>
+<p>裁剪范数可以保留梯度向量的方向。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F9b8279a6-0eca-4b30-abce-29921d103c48%2FUntitled.png?table=block&id=21551485-bd3b-4c21-ba32-04fd4f59485e&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=880&userId=&cache=v2"></p>
+<blockquote>
+<p>“有几个问题……第一，哪个更好？”</p>
+</blockquote>
+<p>一方面，范数裁剪保持了所有参数更新之间的平衡，因为它只是缩放范数并保留方向。 另一方面，值裁剪速度更快，并且它稍微改变梯度向量的方向这一事实似乎不会对性能产生任何有害影响。 因此，您可能可以使用值裁剪。</p>
+<blockquote>
+<p>“第二，我应该使用哪个剪辑值？”</p>
+</blockquote>
+<p>这个问题很难回答，剪辑值是一个超参数，可以像其他参数一样进行微调。 您可以从 10 这样的值开始，如果梯度持续爆炸，则逐渐降低。</p>
+<blockquote>
+<p>“最后，我在实践中该如何去做呢？”</p>
+</blockquote>
+<p>很高兴你问了！ 我们在 StepByStep 类中创建更多方法来处理这两种裁剪，并修改 _make_train_step_fn() 方法来处理它们。 梯度裁剪必须在计算梯度之后（loss.backward()）和更新参数（optimizer.step()）之前发生：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;clipping&#x27;</span>, <span class="literal">None</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">set_clip_grad_value</span>(<span class="params">self, clip_value</span>):</span><br><span class="line">    self.clipping = <span class="keyword">lambda</span>: nn.utils.clip_grad_value_(self.model.parameters(), clip_value=clip_value)</span><br><span class="line">    </span><br><span class="line"><span class="keyword">def</span> <span class="title function_">set_clip_grad_norm</span>(<span class="params">self, max_norm, norm_type=<span class="number">2</span></span>):</span><br><span class="line">    self.clipping = <span class="keyword">lambda</span>: nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_norm, norm_type=norm_type)</span><br><span class="line">    </span><br><span class="line"><span class="keyword">def</span> <span class="title function_">remove_clip</span>(<span class="params">self</span>):</span><br><span class="line">    self.clipping = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_make_train_step_fn</span>(<span class="params">self</span>):</span><br><span class="line">    <span class="comment"># This method does not need ARGS... it can refer to</span></span><br><span class="line">    <span class="comment"># the attributes: self.model, self.loss_fn and self.optimizer</span></span><br><span class="line"></span><br><span class="line">    <span class="comment"># Builds function that performs a step in the train loop</span></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">perform_train_step_fn</span>(<span class="params">x, y</span>):</span><br><span class="line">        <span class="comment"># Sets model to TRAIN mode</span></span><br><span class="line">        self.model.train()</span><br><span class="line"></span><br><span class="line">        <span class="comment"># Step 1 - Computes our model&#x27;s predicted output - forward pass</span></span><br><span class="line">        yhat = self.model(x)</span><br><span class="line">        <span class="comment"># Step 2 - Computes the loss</span></span><br><span class="line">        loss = self.loss_fn(yhat, y)</span><br><span class="line">        <span class="comment"># Step 3 - Computes gradients</span></span><br><span class="line">        loss.backward()</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">callable</span>(self.clipping):</span><br><span class="line">            self.clipping()</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># Step 4 - Updates parameters using gradients and learning rate</span></span><br><span class="line">        self.optimizer.step()</span><br><span class="line">        self.optimizer.zero_grad()</span><br><span class="line"></span><br><span class="line">        <span class="comment"># Returns the loss</span></span><br><span class="line">        <span class="keyword">return</span> loss.item()</span><br><span class="line"></span><br><span class="line">    <span class="comment"># Returns the function that will be called inside the train loop</span></span><br><span class="line">    <span class="keyword">return</span> perform_train_step_fn</span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;set_clip_grad_value&#x27;</span>, set_clip_grad_value)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;set_clip_grad_norm&#x27;</span>, set_clip_grad_norm)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;remove_clip&#x27;</span>, remove_clip)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;_make_train_step_fn&#x27;</span>, _make_train_step_fn)</span><br></pre></td></tr></table></figure>
+
+
+<p>上面的梯度裁剪方法对于大多数模型来说效果很好，但它们对于循环神经网络几乎没有什么用处（我们将在第 8 章中讨论它们），因为循环神经网络需要在反向传播期间对梯度进行裁剪。 幸运的是，我们可以使用反向钩子代码来实现：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">set_clip_backprop</span>(<span class="params">self, clip_value</span>):</span><br><span class="line">    <span class="keyword">if</span> self.clipping <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        self.clipping = []</span><br><span class="line">    <span class="keyword">for</span> p <span class="keyword">in</span> self.model.parameters():</span><br><span class="line">        <span class="keyword">if</span> p.requires_grad:</span><br><span class="line">            func = <span class="keyword">lambda</span> grad: torch.clamp(grad, -clip_value, clip_value)</span><br><span class="line">            handle = p.register_hook(func)</span><br><span class="line">            self.clipping.append(handle)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">remove_clip</span>(<span class="params">self</span>):</span><br><span class="line">    <span class="keyword">if</span> <span class="built_in">isinstance</span>(self.clipping, <span class="built_in">list</span>):</span><br><span class="line">        <span class="keyword">for</span> handle <span class="keyword">in</span> self.clipping:</span><br><span class="line">            handle.remove()</span><br><span class="line">    self.clipping = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;set_clip_backprop&#x27;</span>, set_clip_backprop)</span><br><span class="line"><span class="built_in">setattr</span>(StepByStep, <span class="string">&#x27;remove_clip&#x27;</span>, remove_clip)</span><br></pre></td></tr></table></figure>
+
+
+<p>上面的方法会将钩子附加到模型的所有参数并动态执行梯度裁剪。 我们还调整了remove_clip()方法来删除与钩子相关的任何句柄。</p>
+<h2 id="模型配置和训练"><a href="#模型配置和训练" class="headerlink" title="模型配置和训练"></a>模型配置和训练</h2><p>让我们使用下面的方法来初始化权重，以便我们可以重置梯度爆炸的模型的参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">weights_init</span>(<span class="params">m</span>):</span><br><span class="line">    <span class="keyword">if</span> <span class="built_in">isinstance</span>(m, nn.Linear):</span><br><span class="line">        nn.init.kaiming_uniform_(m.weight, nonlinearity=<span class="string">&#x27;relu&#x27;</span>)</span><br><span class="line">        <span class="keyword">if</span> m.bias <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">            nn.init.zeros_(m.bias)</span><br></pre></td></tr></table></figure>
+
+
+<p>此外，我们使用十倍高的学习率； 毕竟，我们现在完全控制了梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line"><span class="keyword">with</span> torch.no_grad():</span><br><span class="line">    model.apply(weights_init)</span><br><span class="line">    </span><br><span class="line">optimizer = optim.SGD(model.parameters(), lr=<span class="number">0.1</span>)</span><br></pre></td></tr></table></figure>
+
+
+<p>在训练之前，让我们使用 set_clip_grad_value() 确保梯度不会超过 1.0：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">sbs_reg_clip = StepByStep(model, loss_fn, optimizer)</span><br><span class="line">sbs_reg_clip.set_loaders(train_loader)</span><br><span class="line">sbs_reg_clip.set_clip_grad_value(<span class="number">1.0</span>)</span><br><span class="line">sbs_reg_clip.capture_gradients([<span class="string">&#x27;fc1&#x27;</span>])</span><br><span class="line">sbs_reg_clip.train(<span class="number">10</span>)</span><br><span class="line">sbs_reg_clip.remove_clip()</span><br><span class="line">sbs_reg_clip.remove_hooks()</span><br></pre></td></tr></table></figure>
+
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = sbs_reg_clip.plot_losses()</span><br></pre></td></tr></table></figure>
+
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F41562f20-1c7e-43e6-b4d3-de81142b3185%2FUntitled.png?table=block&id=855b3211-39b2-4a94-97e1-62c8572be1d7&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1530&userId=&cache=v2"></p>
+<p>看起来梯度爆炸不再发生了。 即使选择更高的学习率来训练模型，损失也被最小化。</p>
+<p>再次查看平均梯度怎么样（现在有 320 个更新，所以我们只查看极端情况）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">avg_grad = np.array(sbs_reg_clip._gradients[<span class="string">&#x27;fc1&#x27;</span>][<span class="string">&#x27;weight&#x27;</span>]).mean(axis=(<span class="number">1</span>, <span class="number">2</span>))</span><br><span class="line">avg_grad.<span class="built_in">min</span>(), avg_grad.<span class="built_in">max</span>()</span><br></pre></td></tr></table></figure>
+
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(-<span class="number">16.82363797982534</span>, <span class="number">15.610697985589503</span>)</span><br></pre></td></tr></table></figure>
+
+
+<blockquote>
+<p>“为什么这些（绝对）值比我们的裁剪值大得多？”</p>
+</blockquote>
+<p>这些是计算出的梯度； 也就是说，在剪辑之前。 如果不加以控制，这些梯度将导致较大的更新，进而导致更大的梯度，基本会出现梯度爆炸。 但这些值在用于参数更新之前都被剪掉了，因此模型训练一切顺利。</p>
+<p>可以采取更积极的方法，使用我们之前讨论过的反向钩子在原点剪切渐变。</p>
+<h2 id="通过钩子裁剪"><a href="#通过钩子裁剪" class="headerlink" title="通过钩子裁剪"></a>通过钩子裁剪</h2><p>首先，我们再次重置参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line"><span class="keyword">with</span> torch.no_grad():</span><br><span class="line">    model.apply(weights_init)</span><br></pre></td></tr></table></figure>
+
+
+<p>接下来，我们使用 set_clip_backprop() 在反向传播期间使用钩子来剪辑梯度：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">sbs_reg_clip_hook = StepByStep(model, loss_fn, optimizer)</span><br><span class="line">sbs_reg_clip_hook.set_loaders(train_loader)</span><br><span class="line">sbs_reg_clip_hook.set_clip_backprop(<span class="number">1.0</span>)</span><br><span class="line">sbs_reg_clip_hook.capture_gradients([<span class="string">&#x27;fc1&#x27;</span>])</span><br><span class="line">sbs_reg_clip_hook.train(<span class="number">10</span>)</span><br><span class="line">sbs_reg_clip_hook.remove_clip()</span><br><span class="line">sbs_reg_clip_hook.remove_hooks()</span><br></pre></td></tr></table></figure>
+
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fig = sbs_reg_clip_hook.plot_losses()</span><br></pre></td></tr></table></figure>
+
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F6a565b87-1c25-4dfb-a8db-451a333c20db%2FUntitled.png?table=block&id=2e4868be-056b-4a24-b8a8-43389ddb7b53&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=2000&userId=&cache=v2"></p>
+<p>损失再次表现良好。 乍一看，似乎没有什么区别……或者有吗？ 让我们比较这两种方法在整个训练循环中计算的梯度的分布。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F4a7dc9f1-2848-401b-a77b-719ed41ff0bf%2FUntitled.png?table=block&id=7b4f5261-08dd-4770-aa91-03cb6ceff39d&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1100&userId=&cache=v2"></p>
+<p>嗯，这是一个很大的区别！ 在左图中，梯度像往常一样计算，并且仅在参数更新之前进行裁剪，以防止导致梯度爆炸的复合效应。 在右图中，没有任何梯度高于剪辑值（绝对值）。</p>
+<p>请记住，尽管裁剪方法的选择似乎不会对我们简单模型的整体损失产生影响，但这对于循环神经网络来说并不成立，在循环神经网络中，你应该使用钩子来裁剪梯度 。</p>
+<h2 id="回顾"><a href="#回顾" class="headerlink" title="回顾"></a>回顾</h2><p>这一额外的章节比其他章节短得多，其目的是说明一些简单的技术来对疯狂梯度进行控制。 我们使用两个简单的数据集和两个简单的模型来显示梯度消失和爆炸的迹象。 前一个问题是通过不同的初始化方案和可选的批量归一化来解决的，而后者是通过以不同方式裁剪梯度来解决的。 本文主要内容如下：</p>
+<ul>
+<li><p>可视化更深模型中的梯度消失问题</p>
+</li>
+<li><p>使用函数初始化模型的权重</p>
+</li>
+<li><p>可视化初始化方案对梯度的影响</p>
+</li>
+<li><p>认识到批量归一化可以补偿不良的初始化</p>
+</li>
+<li><p>理解梯度爆炸问题</p>
+</li>
+<li><p>使用梯度裁剪来解决梯度爆炸问题</p>
+</li>
+<li><p>可视化值裁剪和范数裁剪之间的差异</p>
+</li>
+<li><p>在反向传播过程中使用反向钩子执行梯度裁剪</p>
+</li>
+<li><p>可视化反向传播之后和期间的裁剪之间的差异</p>
+</li>
+</ul>
+</div><div class="tags"></div><div class="post-nav"><a class="next" href="/2024/03/08/%E8%BF%81%E7%A7%BB%E5%AD%A6%E4%B9%A0/">迁移学习</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a> <a href="/tags/%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/" style="font-size: 15px;">梯度下降</a> <a href="/tags/%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92/" style="font-size: 15px;">线性回归</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/FATE/" style="font-size: 15px;">FATE</a> <a href="/tags/%E4%BC%98%E5%8C%96%E5%99%A8/" style="font-size: 15px;">优化器</a> <a href="/tags/%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0/" style="font-size: 15px;">损失函数</a> <a href="/tags/sigmoid/" style="font-size: 15px;">sigmoid</a> <a href="/tags/MSELoss/" style="font-size: 15px;">MSELoss</a> <a href="/tags/Linear/" style="font-size: 15px;">Linear</a> <a href="/tags/Sequential/" style="font-size: 15px;">Sequential</a> <a href="/tags/TensorBoard/" style="font-size: 15px;">TensorBoard</a> <a href="/tags/matplotlib/" style="font-size: 15px;">matplotlib</a> <a href="/tags/Logits/" style="font-size: 15px;">Logits</a> <a href="/tags/Scikit-Learn/" style="font-size: 15px;">Scikit-Learn</a> <a href="/tags/BCELoss/" style="font-size: 15px;">BCELoss</a> <a href="/tags/Scikit/" style="font-size: 15px;">Scikit</a> <a href="/tags/Sigmod/" style="font-size: 15px;">Sigmod</a> <a href="/tags/ReLU/" style="font-size: 15px;">ReLU</a> <a href="/tags/Leaky-ReLU/" style="font-size: 15px;">Leaky ReLU</a> <a href="/tags/TanH/" style="font-size: 15px;">TanH</a> <a href="/tags/PreReLU/" style="font-size: 15px;">PreReLU</a> <a href="/tags/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0/" style="font-size: 15px;">激活函数</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E6%A8%A1%E5%9E%8B/" style="font-size: 15px;">深度模型</a> <a href="/tags/softmax/" style="font-size: 15px;">softmax</a> <a href="/tags/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">卷积神经网络</a> <a href="/tags/Adam/" style="font-size: 15px;">Adam</a> <a href="/tags/CNN/" style="font-size: 15px;">CNN</a> <a href="/tags/ResNet/" style="font-size: 15px;">ResNet</a> <a href="/tags/AlexNet/" style="font-size: 15px;">AlexNet</a> <a href="/tags/Inception/" style="font-size: 15px;">Inception</a> <a href="/tags/%E6%AE%8B%E5%B7%AE%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">残差网络</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/03/08/%E6%A2%AF%E5%BA%A6%E6%B6%88%E5%A4%B1%E5%92%8C%E6%A2%AF%E5%BA%A6%E7%88%86%E7%82%B8/">梯度消失和梯度爆炸</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/03/08/%E8%BF%81%E7%A7%BB%E5%AD%A6%E4%B9%A0/">迁移学习</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/03/04/Ai%E5%9B%BE%E5%83%8F%E8%AF%86%E5%88%AB%E4%B9%8B-%E5%89%AA%E5%88%80%E7%9F%B3%E5%A4%B4%E5%B8%83/">Ai图像识别之--剪刀石头布</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/26/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/">卷积神经网络</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/23/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E5%AF%B9%E7%89%B9%E5%BE%81%E7%A9%BA%E9%97%B4%E7%9A%84%E5%BD%B1%E5%93%8D/">激活函数对特征空间的影响</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/21/%E4%BD%BF%E7%94%A8AI%E8%BF%9B%E8%A1%8C%E5%9B%BE%E5%83%8F%E5%88%86%E7%B1%BB/">使用AI进行图像分类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/07/%E7%94%A8AI%E6%A8%A1%E5%9E%8B%E5%A4%84%E7%90%86%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98/">用AI模型处理分类问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E9%87%8D%E6%96%B0%E6%80%9D%E8%80%83%E8%AE%AD%E7%BB%83%E5%BE%AA%E7%8E%AF/">重新思考训练循环</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/26/%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92%E9%97%AE%E9%A2%98/">一个简单的线性回归问题</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
