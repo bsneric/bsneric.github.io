@@ -1,0 +1,800 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>迁移学习 | 享乐跑步机</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/normalize/latest/normalize.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/pure/latest/grids-responsive-min.min.css"><link rel="stylesheet" href="//lib.baomitu.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//lib.baomitu.com/jquery/latest/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//lib.baomitu.com/clipboard.js/latest/clipboard.min.js"></script><script type="text/javascript" src="//lib.baomitu.com/toastr.js/latest/toastr.min.js"></script><link rel="stylesheet" href="//lib.baomitu.com/toastr.js/latest/toastr.min.css"><meta name="generator" content="Hexo 7.0.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">迁移学习</h1><a id="logo" href="/.">享乐跑步机</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">迁移学习</h1><div class="post-meta">2024-03-08<span> | </span><span class="category"><a href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></span></div><div class="post-content"><p>本章我们将学习：</p>
+<ul>
+<li>了解ImageNet和AlexNet、VGG、Inception和ResNet等流行模型</li>
+<li>使用迁移学习来对剪刀石头布数据集进行图像分类</li>
+<li>加载预训练模型，用于微调和特征提取</li>
+<li>理解深度框架中辅助分类器的作用</li>
+<li>使用1x1卷积作为尺寸还原层</li>
+<li>构建一个初始模块</li>
+<li>了解批量标准化如何在多方面影响模型训练</li>
+<li>了解残差（跳过）连接的目的，并构建一个残差块</li>
+</ul>
+<h2 id="需要导入的依赖"><a href="#需要导入的依赖" class="headerlink" title="需要导入的依赖"></a>需要导入的依赖</h2><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> numpy <span class="keyword">as</span> np</span><br><span class="line"><span class="keyword">from</span> PIL <span class="keyword">import</span> Image</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.optim <span class="keyword">as</span> optim</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"><span class="keyword">import</span> torch.nn.functional <span class="keyword">as</span> F</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> torch.utils.data <span class="keyword">import</span> DataLoader, Dataset, random_split, TensorDataset</span><br><span class="line"><span class="keyword">from</span> torchvision.transforms <span class="keyword">import</span> Compose, ToTensor, Normalize, Resize, ToPILImage, CenterCrop, RandomResizedCrop</span><br><span class="line"><span class="keyword">from</span> torchvision.datasets <span class="keyword">import</span> ImageFolder</span><br><span class="line"><span class="keyword">from</span> torchvision.models <span class="keyword">import</span> alexnet, resnet18, inception_v3</span><br><span class="line"></span><br><span class="line"><span class="comment"># 升级到 Torchvision 0.15以上之后，model_urls不可用，需要按如下方式</span></span><br><span class="line"><span class="keyword">from</span> torchvision.models.alexnet <span class="keyword">import</span> AlexNet_Weights</span><br><span class="line"><span class="keyword">from</span> torchvision.models.inception <span class="keyword">import</span> Inception_V3_Weights</span><br><span class="line"><span class="keyword">from</span> torchvision.models.resnet <span class="keyword">import</span> ResNet18_Weights</span><br><span class="line"><span class="comment"># from torchvision.models.alexnet import model_urls</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    <span class="keyword">from</span> torchvision.models.utils <span class="keyword">import</span> load_state_dict_from_url</span><br><span class="line"><span class="keyword">except</span> ImportError:</span><br><span class="line">    <span class="keyword">from</span> torch.hub <span class="keyword">import</span> load_state_dict_from_url</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> stepbystep.v3 <span class="keyword">import</span> StepByStep</span><br><span class="line"><span class="keyword">from</span> data_generation.rps <span class="keyword">import</span> download_rps</span><br></pre></td></tr></table></figure>
+
+<h2 id="迁移学习"><a href="#迁移学习" class="headerlink" title="迁移学习"></a>迁移学习</h2><p>在上一章中，我称模型为“激进模型”，只是因为它有两个而不是一个卷积块，还有 dropout 层。说实话，其实这个模型还不算激进，跟激进的模型包含数十个卷积块，还有很多架构技巧让他们真正强大。他们有数百万个参数并且不只需要大量的数据还需要数千个（昂贵的）GPU 小时来训练。</p>
+<p>我们不知道你有没有这么多数据和 GPU 资源，我们没有。那么该怎么办？解决的办法是迁移学习。</p>
+<p>这个想法很简单。首先，一些能够访问几乎无限数据和计算能力的大型科技公司，为自己的目的开发和训练一个巨大的模型。接下来，一旦训练好了，其架构和相应的训练好的权重（预训练模型）就会发布出来。最后，每个人都可以使用这些训练好的权重作为起点，然后根据自己的需要对这些参数进行微调。</p>
+<p>简而言之，这就是转移学习。这一切都始于计算机视觉模型和…</p>
+<h2 id="ImageNet"><a href="#ImageNet" class="headerlink" title="ImageNet"></a>ImageNet</h2><blockquote>
+<p>来自ImageNet： ImageNet是一个按照WordNet层次结构（目前只有名词）组织的图像数据库，其中层次结构的每个节点都由成百上千的图像来描述。 目前，我们每个节点平均有超过五百张图像。 我们希望 ImageNet 能够成为研究人员、教育工作者、学生以及所有与我们一样对图片充满热情的人的有用资源。</p>
+</blockquote>
+<p>ImageNet 是一个综合图像数据库，涵盖 27 个高级类别、超过 20,000 个子类别和超过 1400 万张图像（请在<a target="_blank" rel="noopener" href="http://image-net.org/about-stats">此处</a>查看其统计数据。）图像本身无法从其网站下载，因为 ImageNet 不拥有这些图像的版权。 不过，它确实提供了所有图像的 URL。</p>
+<p>正如您可能猜到的那样，对这些图像进行分类在 2010 年代初期是一项艰巨的任务。 难怪他们创造了一个挑战……</p>
+<h2 id="ImageNet大规模视觉识别挑战（ILSVRC）"><a href="#ImageNet大规模视觉识别挑战（ILSVRC）" class="headerlink" title="ImageNet大规模视觉识别挑战（ILSVRC）"></a>ImageNet大规模视觉识别挑战（ILSVRC）</h2><blockquote>
+<p>来自ILSVRC 的说明：ImageNet 大规模视觉识别挑战赛 (ILSVRC) 评估大规模对象检测和图像分类算法。</p>
+</blockquote>
+<p>ILSVRC 从 2010 年到 2017 年运行了八年。今天我们认为理所当然的许多架构都是为了应对这一挑战而开发的：AlexNet、VGG、Inception、ResNet 等等。 我们仅关注 2012 年、2014 年和 2015 年。</p>
+<h3 id="ILSVRC-2012"><a href="#ILSVRC-2012" class="headerlink" title="ILSVRC-2012"></a>ILSVRC-2012</h3><p>ILSVRC 的 <a target="_blank" rel="noopener" href="http://image-net.org/challenges/LSVRC/2012/">2012 版</a> 可能是其中最受欢迎的。 它的获胜者，被称为 AlexNet 的架构，代表了图像分类的一个里程碑，大大减少了分类错误。 训练数据有 120 万张图像，属于 1000 个类别（它实际上是 ImageNet 数据集的子集）。</p>
+<h3 id="AlexNet-SuperVision-团队"><a href="#AlexNet-SuperVision-团队" class="headerlink" title="AlexNet(SuperVision 团队)"></a>AlexNet(SuperVision 团队)</h3><p>该架构由来自多伦多大学的 Alex Krizhevsky、Ilya Sutskever 和 Geoffrey Hinton 组成的 SuperVision 团队开发（现在你知道为什么它被称为 AlexNet 了吧）。 这是他们的模型的描述：</p>
+<blockquote>
+<p>我们的模型是一个基于原始 RGB 像素值训练的大型深度卷积神经网络。 该神经网络拥有 6000 万个参数和 650,000 个神经元，由五个卷积层（其中一些后面是最大池化层）和三个全局连接层（最终为 1000 路 softmax）组成。 它在两个 NVIDIA GPU 上接受了大约一周的训练。 为了加快训练速度，我们使用非饱和神经元和非常高效的 GPU 实现卷积网络。 为了减少全局连接层中的过度拟合，我们采用了隐藏单元“dropout”，这是一种最近开发的正则化方法，被证明非常有效。</p>
+</blockquote>
+<p>您应该能够识别描述中的所有元素：对应于模型的“特征化器”部分的五个典型卷积块（卷积、激活函数和最大池化），对应于 模型的“分类器”部分，以及典型的多类分类问题的 softmax 输出层。</p>
+<p>它几乎就是第 6 章中的模型，但更强大！ 我们将使用 AlexNet 来演示如何使用预训练模型。 如果您有兴趣了解有关 AlexNet 的更多信息，该论文名为“<a target="_blank" rel="noopener" href="https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks">ImageNet Classification with Deep Convolutional Neural Network</a>s”。</p>
+<h3 id="ILSVRC-2014"><a href="#ILSVRC-2014" class="headerlink" title="ILSVRC-2014"></a>ILSVRC-2014</h3><p><a target="_blank" rel="noopener" href="http://image-net.org/challenges/LSVRC/2014/">2014 年版</a>在计算机视觉问题的架构方面产生了两个现在家喻户晓的名字：VGG 和 Inception。 与 2012 年的版本一样，训练数据有 120 万张图像，包含 1000 个类别。</p>
+<h3 id="VGG"><a href="#VGG" class="headerlink" title="VGG"></a>VGG</h3><p>由牛津视觉几何组 (VGG) 的 Karen Simonyan 和 Andrew Zisserman 开发的架构几乎是一个比 AlexNet 更大或更深入的模型（现在您知道另一个架构名称的由来了）。 他们的目标在模型的描述中非常明确：</p>
+<blockquote>
+<p>…我们探讨了卷积网络 (ConvNet) 深度对其准确性的影响。</p>
+</blockquote>
+<p>VGG 模型非常庞大，因此我们在这里不太关注它们。 如果你想了解更多，可以参考他们的论文“<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1409.1556">Very Deep Convolutional Networks for Large-Scale Image Recognition</a>.”</p>
+<h3 id="Inception-GoogLeNet-团队"><a href="#Inception-GoogLeNet-团队" class="headerlink" title="Inception(GoogLeNet 团队)"></a>Inception(GoogLeNet 团队)</h3><p>Inception 架构可能是最具思考性的架构：“我们需要更深入。” 作者 Christian Szegedy 等人与 VGG 团队一样，希望训练更深层次的模型。 但他们想出了一个聪明的方法：</p>
+<blockquote>
+<p>基于嵌入学习直觉的附加降维层使我们能够显着增加网络的深度和宽度，而不会产生大量的计算开销。</p>
+</blockquote>
+<p>如果你想了解更多这方面的内容，可以参考论文”<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1409.4842">Going Deeper with Convolutions</a>“。</p>
+<blockquote>
+<p>这里提到的降维层是什么？</p>
+</blockquote>
+<p>现在先不用担心，我们会在 Inception 模块中讲到。</p>
+<h3 id="ILSVRC-2015"><a href="#ILSVRC-2015" class="headerlink" title="ILSVRC-2015"></a>ILSVRC-2015</h3><p><a target="_blank" rel="noopener" href="http://image-net.org/challenges/LSVRC/2015/">2015 年版</a>在其架构中大量的使用了残差连接：Res(idual) Net(work)。 比赛中使用的训练数据保持不变。</p>
+<h3 id="ResNet（MSRA-团队）"><a href="#ResNet（MSRA-团队）" class="headerlink" title="ResNet（MSRA 团队）"></a>ResNet（MSRA 团队）</h3><p>该技巧由 Kaiming He 等人开发，其向非常深的架构添加剩余连接或快捷方式。</p>
+<blockquote>
+<p>我们训练深度超过 150 层的神经网络。 我们提出了一种“深度残差学习”框架，可以简化极深网络的优化和收敛。</p>
+</blockquote>
+<p>简而言之，它让网络更容易学习恒等函数。 我们将在本章后面的“残差连接”部分中再次讨论它。如果你对更多内容感兴趣，可以查看论文”<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1512.03385">Deep Residual Learning for Image Recognition.</a>”</p>
+<blockquote>
+<p>顺便说一句，Kaiming He 还有一个以他的名字命名的初始化方案——有时称为“He 初始化”，有时称为“Kaiming 初始化”——我们将在下一章中了解这些内容。</p>
+</blockquote>
+<h3 id="Imagenette"><a href="#Imagenette" class="headerlink" title="Imagenette"></a><strong>Imagenette</strong></h3><p>如果您正在寻找更小、更易于管理的类似 ImageNet 的数据集，Imagenette 非常适合您！ 它由 <a target="_blank" rel="noopener" href="http://fast.ai/">fast.ai</a> 的 Jeremy Howard 开发，是 ImageNet 中 10 个易于分类的类的子集。</p>
+<p>你可以在这里找到它：<a target="_blank" rel="noopener" href="https://github.com/fastai/imagenette%E3%80%82">https://github.com/fastai/imagenette。</a></p>
+<h2 id="比较架构"><a href="#比较架构" class="headerlink" title="比较架构"></a>比较架构</h2><p>现在您已经熟悉了一些流行的架构（其中许多架构都可以在 Torchvision中可以直接使用），让我们比较一下它们的性能（Top-1 准确度）、单次前向传递中的操作数量（十亿）和大小 （以百万个参数为单位）。 下图是一个比较：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F8bae4116-3c03-4a28-8017-0e21ee6dbc5b%2FUntitled.png?table=block&id=8a7dad33-cd45-4d0a-a1a7-bae805ea3b09&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1330&userId=&cache=v2"></p>
+<p>来源：从本报告中获得的准确性和 GFLOPs 估计数据[122]； 参数数量从 Torchvision 模型中获得（与圆圈大小成比例）。 有关更详细的分析，请参阅 Canziani, A.、Culurciello, E.、Paszke, A. **”<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1605.07678">An Analysis ofDeep Neural Network Models for Practical Applications</a>“</p>
+<p>看看 VGG 模型的规模有多大？无论是大小还是提供单个预测所需的操作数量。 另一方面，看 Inception-V3 和 ResNet-50 在图中的位置：它们会给你带来更多的收益。 前者性能稍高，后者速度稍快。</p>
+<blockquote>
+<p>Inception 和 ResNet 是你可以用来完成迁移学习的模型。</p>
+</blockquote>
+<p>在左下方是 AlexNet，它在 2012 年非常领先，但是现在已经没有竞争力了。</p>
+<blockquote>
+<p>如果 AlexNet 没有竞争力，你为什么还要用他来介绍迁移学习？</p>
+</blockquote>
+<p>问的话。 原因是，你已经熟悉它的架构元素，因此我可以更轻松地解释我们如何修改它以适应我们的需求。</p>
+<h2 id="迁移学习实战"><a href="#迁移学习实战" class="headerlink" title="迁移学习实战"></a>迁移学习实战</h2><p>在上一章中，我们创建了一个自己的模型来分类剪刀石头布图像数据。这里我们用相同的数据集，但是不会创建另一个模型，而是使用 AlextNet。</p>
+<p>所有的工作从加载一个预训练模型开始，可以通过 Torchvision 的models 中找到。此处有一个 Alex Krizhevsky 实现的AlextNet 的 PyTorch 模型架构，一个创建 AlexNet 模型的助手方法，也即下周和加载预训练权重的方法。</p>
+<h3 id="预训练模型"><a href="#预训练模型" class="headerlink" title="预训练模型"></a>预训练模型</h3><p>我们先从加载 AlexNet 模型开始，现不加载它的预训练权重参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">alex=alexnet(weights=<span class="literal">None</span>)</span><br><span class="line"><span class="built_in">print</span>(alex)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">AlexNet(</span><br><span class="line">  (features): Sequential(</span><br><span class="line">    (<span class="number">0</span>): Conv2d(<span class="number">3</span>, <span class="number">64</span>, kernel_size=(<span class="number">11</span>, <span class="number">11</span>), stride=(<span class="number">4</span>, <span class="number">4</span>), padding=(<span class="number">2</span>, <span class="number">2</span>))</span><br><span class="line">    (<span class="number">1</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">2</span>): MaxPool2d(kernel_size=<span class="number">3</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>)</span><br><span class="line">    (<span class="number">3</span>): Conv2d(<span class="number">64</span>, <span class="number">192</span>, kernel_size=(<span class="number">5</span>, <span class="number">5</span>), stride=(<span class="number">1</span>, <span class="number">1</span>), padding=(<span class="number">2</span>, <span class="number">2</span>))</span><br><span class="line">    (<span class="number">4</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">5</span>): MaxPool2d(kernel_size=<span class="number">3</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>)</span><br><span class="line">    (<span class="number">6</span>): Conv2d(<span class="number">192</span>, <span class="number">384</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>), padding=(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">    (<span class="number">7</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">8</span>): Conv2d(<span class="number">384</span>, <span class="number">256</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>), padding=(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">    (<span class="number">9</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">10</span>): Conv2d(<span class="number">256</span>, <span class="number">256</span>, kernel_size=(<span class="number">3</span>, <span class="number">3</span>), stride=(<span class="number">1</span>, <span class="number">1</span>), padding=(<span class="number">1</span>, <span class="number">1</span>))</span><br><span class="line">    (<span class="number">11</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">12</span>): MaxPool2d(kernel_size=<span class="number">3</span>, stride=<span class="number">2</span>, padding=<span class="number">0</span>, dilation=<span class="number">1</span>, ceil_mode=<span class="literal">False</span>)</span><br><span class="line">  )</span><br><span class="line">  (avgpool): AdaptiveAvgPool2d(output_size=(<span class="number">6</span>, <span class="number">6</span>))</span><br><span class="line">  (classifier): Sequential(</span><br><span class="line">    (<span class="number">0</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">    (<span class="number">1</span>): Linear(in_features=<span class="number">9216</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">2</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">3</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">    (<span class="number">4</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">5</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">    (<span class="number">6</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">1000</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  )</span><br><span class="line">)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>AlextNet 架构有三个主要的元素：features, avgpool和classifier。第一个和最后一个是嵌套顺序模型。特征器包含 5 个标准的卷积块，分类器有两个隐藏层并使用了 50% 的 Dropout。除了中间的元素，你对这些概念应该已经很熟悉了。</p>
+<h3 id="自适应池化"><a href="#自适应池化" class="headerlink" title="自适应池化"></a>自适应池化</h3><p>在中间的元素，AdaptiveAvgPool2d（在functional 中的F.adaptive_avg_pool2d() ）是一个特殊的池化：这里没有使用内核尺寸（和步长），它使用了确定的输出尺寸。换句话说，无论输入的图像是什么尺寸，它都返回一个确定尺寸的张量。</p>
+<blockquote>
+<p>这有什么特别的？</p>
+</blockquote>
+<p>这样你就可以自由的使用任意尺寸的图像。我们已经看到过卷积操作和传统的最大化池，它通常要收缩图像的维度。但模型的分类器部分期望输入到确定的大小。这意味着输入图像的尺寸必须是固定的，这样才能满足分类器的需求。自适应池化确保了输出图像有固定的尺寸，以满足分类器的需求。</p>
+<p>假设我们有两个虚拟张量，代表模型的featurizer部分生成的特征图。特征图映射了不同的维度（32<em>32 和 12</em>12）。在其上使用自适应池化操作，可以保证输出的都是相同的维度（6*6）。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">result1=F.adaptive_avg_pool2d(torch.randn(<span class="number">16</span>,<span class="number">32</span>,<span class="number">32</span>),output_size=(<span class="number">6</span>,<span class="number">6</span>))</span><br><span class="line">result2=F.adaptive_avg_pool2d(torch.randn(<span class="number">16</span>,<span class="number">12</span>,<span class="number">12</span>),output_size=(<span class="number">6</span>,<span class="number">6</span>))</span><br><span class="line">result1.shape,result2.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(torch.Size([<span class="number">16</span>, <span class="number">6</span>, <span class="number">6</span>]), torch.Size([<span class="number">16</span>, <span class="number">6</span>, <span class="number">6</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>非常棒，是吧。我们已经有了架构，但是我们的模型还没有经过训练（它的权重依然是随机的），让我们来补上操作。</p>
+<h3 id="加载权重"><a href="#加载权重" class="headerlink" title="加载权重"></a>加载权重</h3><p>首先：要将权重加载到我们的模型中，我们需要获取它们。当然，我们可以通过设置参数 alexnet(weights&#x3D;AlexNet_Weights.DEFAULT)来获取默认权重参数，但是你也可以手动下载他们，这样你可以更灵活的使用这些预训练的参数。</p>
+<p>PyTorch 中的 AlexNet_Weights 对象的 url 方法将返回权重参数的 URL，你可以将他们下载到本地。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> torchvision.models.alexnet <span class="keyword">import</span> AlexNet_Weights</span><br><span class="line">weights=AlexNet_Weights.DEFAULT</span><br><span class="line">url=weights.url</span><br><span class="line"><span class="built_in">print</span>(url)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://download.pytorch.org/models/alexnet-owt-7be5be79.pth</span><br></pre></td></tr></table></figure>
+
+<p>当然，对于 PyTorch 中的模型手工下载参数没什么意义。但是，如果你想要在一个第三方模型中使用预训练的参数，你可以从url加载它们，比如：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">state_dict = load_state_dict_from_url(url, progress=<span class="literal">True</span>,model_dir=<span class="string">&#x27;pretrained_models/alexnet&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Downloading: <span class="string">&quot;https://download.pytorch.org/models/alexnet-owt-7be5be79.pth&quot;</span> </span><br><span class="line">to pretrained_models/alexnet/alexnet-owt-7be5be79.pth</span><br></pre></td></tr></table></figure>
+
+<p>上述操作将会把模型保存到本地磁盘上，要加载模型的状态字典，我们可以使用 load_state_dict()方法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">alex.load_state_dict(state_dict=state_dict)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&lt;All keys matched successfully&gt;</span><br></pre></td></tr></table></figure>
+
+<p>好了，我们现在有了一个完全训练好的 AlexNet 模型，接下来呢？</p>
+<h3 id="模型冻结"><a href="#模型冻结" class="headerlink" title="模型冻结"></a>模型冻结</h3><p>大多数情况下，你不会继续训练完整的模型。我的意思是，理论上来说，你只需要基于作者已经训练好的模型，使用自己的数据接着训练即可。这里有很多工作要做，你需要大量的数据完成这种接续工作。一定有更好的方法，当然是的，我们可以冻结模型。</p>
+<blockquote>
+<p>冻结模型意味着，它不会在学习更多的东西，就是说，它的参数和权重将不再被更新。</p>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">freeze_model</span>(<span class="params">model</span>):</span><br><span class="line">    <span class="keyword">for</span> parameter <span class="keyword">in</span> model.parameters():</span><br><span class="line">        parameter.requires_grad = <span class="literal">False</span></span><br><span class="line"></span><br><span class="line">freeze_model(alex)</span><br></pre></td></tr></table></figure>
+
+<p>上述方法在一个模型的 parameters 中循环，然后冻结他们，也就是让这些参数不再进行梯度下降的操作。</p>
+<blockquote>
+<p>如果一个模型冻结了，我们如何用它来训练自己的数据？</p>
+</blockquote>
+<p>问得好！我们必须将模型的一小部分解冻，或者说，替换模型的一小部分。我们将替换模型的顶部。</p>
+<h3 id="模型的顶部"><a href="#模型的顶部" class="headerlink" title="模型的顶部"></a>模型的顶部</h3><p>所谓模型的“顶部”，其实指的是模型的最后一层，通常它属于分类器部分。特征器r部分通常保持不变，因为我们要利用模型为我们生成特征的能力。让我们仔细看看 AlexNet 的分类器部分：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">print</span>(alex.classifier)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">Sequential(</span><br><span class="line">  (<span class="number">0</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">1</span>): Linear(in_features=<span class="number">9216</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">2</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">3</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">4</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">5</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">6</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">1000</span>, bias=<span class="literal">True</span>)</span><br><span class="line">)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>它有两个隐藏层和一个输出层。输出层将生成 1000 个 logits，每个对应 ILSVRC 挑战中的一个分类。但是，除非你也参加这样的挑战，否则你在这里会指定自己的分类来计算 logits。</p>
+<p>在外面的剪刀石头布数据集中，我们有三个分类。所以，我们需要相应的替换输出层。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">alex.classifier[<span class="number">6</span>]=nn.Linear(in_features=<span class="number">4096</span>,out_features=<span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<p>下图可能会帮助你对上述操作有一个形象化的了解</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F899a3ed2-0eed-4413-be2d-a866b6c22aa1%2FUntitled.png?table=block&id=20c6afa3-6a54-47f5-9e93-0e0fb2c9aa6f&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1300&userId=&cache=v2"></p>
+<p>注意输入的特征数量参数保持不变，因为它仍然接收来自隐藏层的输出作为参数。新的输出层确实情况下是包括梯度下降的，我们验证一下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> name,param <span class="keyword">in</span> alex.named_parameters():</span><br><span class="line">    <span class="keyword">if</span> param.requires_grad==<span class="literal">True</span>:</span><br><span class="line">        <span class="built_in">print</span>(name)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">classifier<span class="number">.6</span>.weight</span><br><span class="line">classifier<span class="number">.6</span>.bias</span><br></pre></td></tr></table></figure>
+
+<p>很好，唯一会“学习”的层，是我们新创建的输出层（classifier.6），也就是模型的“顶部”。</p>
+<blockquote>
+<p>解冻一些隐藏层如何？</p>
+</blockquote>
+<p>这也是可行的，如果这样，就是回复隐藏层，从头开始训练。此时，你需要更多的数据来达到同样的效果。</p>
+<blockquote>
+<p>不只是输出层，我可以把整个分类器部分都替换掉吗？</p>
+</blockquote>
+<p>当然了！分类器部分可以有不同的架构，只要它接收AlexNet第一部分产生的9216个输出作为输入，并输出任务所需的尽可能多的logits。在这种情况下，整个分类器将从头开始学习，您需要更多的数据来完成它。</p>
+<blockquote>
+<p>你解冻和替换的层越多，就需要越多的数据来进行模型的微调。</p>
+</blockquote>
+<p>这里我们只使用最简单的方法，即替换输出层。</p>
+<blockquote>
+<p>技术上讲，如果我们不冻结预训练的权重，我们就只是在微调模型。也就是说，整个模型将被略微更新。由于我们冻结了除输出层外的所有部分，所以我们实际上只是利用预训练模型进行特征提取。</p>
+</blockquote>
+<blockquote>
+<p>如果我们用另外一个模型呢？我应该替换哪一层？</p>
+</blockquote>
+<p>下图覆盖了一些你在迁移学习中常用的一些模型。它列出了输入图像的预期大小、要替换的分类器层以及适当的替换，给定手头任务的类数量：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>尺寸</th>
+<th>分类器层</th>
+<th>替换层</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>AlexNet</td>
+<td>224</td>
+<td>model.classifier[6]</td>
+<td>nn.Linear(4096,num_classes)</td>
+</tr>
+<tr>
+<td>VGG</td>
+<td>224</td>
+<td>model.classifier[6]</td>
+<td>nn.Linear(4096,num_classes)</td>
+</tr>
+<tr>
+<td>InceptionV3</td>
+<td>299</td>
+<td>model.fc</td>
+<td>nn.Linear(2048,num_classes)</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>model.Auxlogits.fc</td>
+<td>nn.Linear(768,num_classes)</td>
+</tr>
+<tr>
+<td>ResNet</td>
+<td>224</td>
+<td>model.fc</td>
+<td>nn.Linear(512,num_classes)</td>
+</tr>
+<tr>
+<td>DenseNet</td>
+<td>224</td>
+<td>model.classifier</td>
+<td>nn.Linear(1024,num_classes)</td>
+</tr>
+<tr>
+<td>SqueezeNet</td>
+<td>224</td>
+<td>model.classifier[1]</td>
+<td>nn.Conv2d(512,numclasses,kernel_size&#x3D;1,stride&#x3D;1)</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>为什么 Inception V3 模型有两个层？</p>
+</blockquote>
+<p>Inception 模型是个特例，因为它有辅助分类器，我们会在后面讨论。</p>
+<h3 id="模型配置"><a href="#模型配置" class="headerlink" title="模型配置"></a>模型配置</h3><p>模型配置中缺失了什么？一个损失函数和一个优化器。当处理一个多类别的分类问题时，当模型输出 logits 时，需要一个 nn.CrossEnrtopyLoss()作为损失函数。对于优化器，我们选择 Adam 和“Karpathy Constant”(3e-4)作为学习率。</p>
+<p>模型配置</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">17</span>)</span><br><span class="line">multi_loss_fn=nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_alex=optim.Adam(alex.parameters(),lr=<span class="number">3e-4</span>)</span><br></pre></td></tr></table></figure>
+
+<p>很好，我们完成了模型配置，接下来进行数据准备。</p>
+<h3 id="数据准备"><a href="#数据准备" class="headerlink" title="数据准备"></a>数据准备</h3><p>这步要做的工作和我们之前的很类似，我们继续使用石头剪刀布数据集，除了一个关键的区别：我们将使用不同的参数来标准化图像。</p>
+<blockquote>
+<p>所以，我们不再为数据集中的图像进行计算统计？</p>
+</blockquote>
+<p>不！</p>
+<blockquote>
+<p>为什么不？</p>
+</blockquote>
+<p>因为我们使用了一个预训练模型，我们需要使用用于训练原始模型的标准化参数。换句话说，我们需要使用用于训练模型的原始数据集的统计值。对于 AlexNet（以及每个预训练的计算机视觉模型），这些统计数据应在 ILSVRC 数据集中进行了训练。</p>
+<p>你可以在 PyTorch 的文档中找到这些预训练模型的值。</p>
+<h3 id="ImageNet统计数据"><a href="#ImageNet统计数据" class="headerlink" title="ImageNet统计数据"></a>ImageNet统计数据</h3><p>所有的预训练模型都接收相同的输入标准化图像，比如形状为 2<em>H</em>W 的三通道 RGB 小批量，这里的 H 和 W 最少为 224。图像必须使用 mean&#x3D;[0.485,0.456,0.406]和 std&#x3D;[0.229,0.224,0.225]来进行标准化。你可以使用下面的方式进行转换：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">normalize=transforms.Normalize(mean=[<span class="number">0.485</span>, <span class="number">0.456</span>, <span class="number">0.406</span>],</span><br><span class="line">                               std=[<span class="number">0.229</span>, <span class="number">0.224</span>, <span class="number">0.225</span>])</span><br></pre></td></tr></table></figure>
+
+<p>所以，对于石头剪刀布数据集，数据准备步骤的内容如下：</p>
+<p>数据准备</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">normalizer=Normalize(mean=[<span class="number">0.485</span>, <span class="number">0.456</span>, <span class="number">0.406</span>]</span><br><span class="line">                     ,std=[<span class="number">0.229</span>, <span class="number">0.224</span>, <span class="number">0.225</span>])</span><br><span class="line">composer=Compose([Resize(<span class="number">256</span>),</span><br><span class="line">                 CenterCrop(<span class="number">224</span>),</span><br><span class="line">                 ToTensor(),</span><br><span class="line">                 normalizer])</span><br><span class="line">train_data=ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>,transform=composer)</span><br><span class="line">val_data=ImageFolder(root=<span class="string">&#x27;rps-test-set&#x27;</span>,transform=composer)</span><br><span class="line"><span class="comment"># 为每个数据集创建数据加载器</span></span><br><span class="line">train_loader=DataLoader(train_data,batch_size=<span class="number">16</span>,shuffle=<span class="literal">True</span>)</span><br><span class="line">val_loader=DataLoader(val_data,batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型训练"><a href="#模型训练" class="headerlink" title="模型训练"></a>模型训练</h3><p>我们已经准备好了训练修改了 AlexNet 顶层的模型的所有工作，接下来可以开始训练了：</p>
+<p>模型训练</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_alex=StepByStep(alex,multi_loss_fn,optimizer_alex)</span><br><span class="line">sbs_alex.set_loaders(train_loader,val_loader)</span><br><span class="line">sbs_alex.train(<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>你可能注意到了，尽管只训练了一个迭代，还是花了较长时间，如果是在 CPU 上执行训练的话，时间会更长。</p>
+<blockquote>
+<p>为什么呢？模型的大部分层都被冻结了，只有一层需要训练呀。。。</p>
+</blockquote>
+<p>你是对的，这里只有一层需要计算梯度和更新参数，但是参数的前向传输仍然贯穿整个模型。因此，每张图像（我们训练集中的2520张）都将使用超过6100万个参数计算其特征！无怪乎需要这么长时间！顺便说一下，只有12,291个参数是可训练的。</p>
+<p>如果你在想：“一定有更好的办法。。。”，你猜对了-这是我们要在下一节讨论的主题。</p>
+<p>但是首先，我们看看使用迁移学习仅仅只需一个训练迭代后，其评估结果如何：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader,sbs_alex.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">        [  <span class="number">0</span>,  <span class="number">84</span>],</span><br><span class="line">        [  <span class="number">0</span>,   <span class="number">0</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>尽管只训练了一个迭代，训练结果已经相当准确了。</p>
+<h3 id="特征数据集的生成"><a href="#特征数据集的生成" class="headerlink" title="特征数据集的生成"></a>特征数据集的生成</h3><p>我们之前已经注意到，我们训练的一个迭代中，大部分时间花在了参数的前向传输中。现在假设我们打算训练十个迭代：不仅会花费大量的时间来完成参数的前向传输，更糟糕的是相同的操作会被执行 10 次。</p>
+<blockquote>
+<p>因为除了最后一层，其它部分都被冻结了，所以倒数第二层的输出总是相同的。<br>当然，这是假设你没有做数据增强。</p>
+</blockquote>
+<p>这是巨大的时间和金钱的浪费。</p>
+<blockquote>
+<p>那么我们可以做些什么呢？</p>
+</blockquote>
+<p>好吧，既然冻结层只是生成将作为可训练层输入的特征，为什么不这样对待冻结层呢？ 我们可以通过四个简单的步骤来完成：</p>
+<ul>
+<li>仅保留模型中的冻结层</li>
+<li>通过它运行整个数据集并将其输出收集为数据集特征。</li>
+<li>使用特征数据集训练一个单独的模型（对应于原始模型的“顶部”）。</li>
+<li>将经过训练的模型附加到冻结层的顶部。</li>
+</ul>
+<p>通过这种方式，我们有效地分割了特征提取和实际训练阶段，从而避免了为每个前向传递一遍又一遍地生成特征的开销。</p>
+<p>为了只保留冻结层，我们需要去掉原始模型的“顶部”。 但是，由于我们还希望在训练后将新层附加到整个模型，因此最好用身份层替换“顶部”层，而不是完全删除它：</p>
+<p>移除模型的顶层</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">alex.classifier[<span class="number">6</span>]=nn.Identity()</span><br><span class="line"><span class="built_in">print</span>(alex.classifier)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">Sequential(</span><br><span class="line">  (<span class="number">0</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">1</span>): Linear(in_features=<span class="number">9216</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">2</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">3</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">4</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">5</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">6</span>): Identity()</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>这样，最后一个有效层仍然是classifier.5，它将产生我们感兴趣的特征。现在我们手中有了一个特征提取器！ 让我们用它来预处理我们的数据集。</p>
+<p>下面的函数循环处理来自数据加载器的小批量数据，将它们发送到我们的特征提取器模型，将输出与相应的标签组合起来，然后返回一个 TensorDataset：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">preprocessed_dataset</span>(<span class="params">model, loader, device=<span class="literal">None</span></span>):</span><br><span class="line">    <span class="keyword">if</span> device <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        device = <span class="built_in">next</span>(model.parameters()).device</span><br><span class="line">    </span><br><span class="line">    features = <span class="literal">None</span></span><br><span class="line">    labels = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> i, (x, y) <span class="keyword">in</span> <span class="built_in">enumerate</span>(loader):</span><br><span class="line">        model.<span class="built_in">eval</span>()</span><br><span class="line">        x = x.to(device)</span><br><span class="line">        output = model(x)</span><br><span class="line">        <span class="keyword">if</span> i == <span class="number">0</span>:</span><br><span class="line">            features = output.detach().cpu()</span><br><span class="line">            labels = y.cpu()</span><br><span class="line">        <span class="keyword">else</span>:</span><br><span class="line">            features = torch.cat([features, output.detach().cpu()])</span><br><span class="line">            labels = torch.cat([labels, y.cpu()])</span><br><span class="line"></span><br><span class="line">    dataset = TensorDataset(features, labels)</span><br><span class="line">    <span class="keyword">return</span> dataset</span><br></pre></td></tr></table></figure>
+
+<p>我们可以用它来预处理我们的数据集：</p>
+<p>数据预处理</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">train_preproc = preprocessed_dataset(alex, train_loader)</span><br><span class="line">val_preproc = preprocessed_dataset(alex, val_loader)</span><br></pre></td></tr></table></figure>
+
+<p>好了，我们有 TensorDatasets，其中包含 AlexNet 为每个图像以及相应标签生成的特征张量。</p>
+<blockquote>
+<p>重要提示：此预处理步骤假设没有数据增强。 如果要执行数据增强，则需要训练模型的“顶部”，同时它仍然附加到模型的其余部分，因为由于经过增强，冻结层产生的特征每次都会略有不同 。</p>
+</blockquote>
+<p>我们也可以把这些张量保存到磁盘：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">torch.save(train_preproc.tensors, <span class="string">&#x27;rps_preproc.pth&#x27;</span>)</span><br><span class="line">torch.save(val_preproc.tensors, <span class="string">&#x27;rps_val_preproc.pth&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p>通过这种方式，他们就可以在后续被用于创建数据集：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">x, y = torch.load(<span class="string">&#x27;rps_preproc.pth&#x27;</span>)</span><br><span class="line">train_preproc = TensorDataset(x, y)</span><br><span class="line">val_preproc = TensorDataset(*torch.load(<span class="string">&#x27;rps_val_preproc.pth&#x27;</span>))</span><br></pre></td></tr></table></figure>
+
+<p>数据准备的最后一步是创建数据加载器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">train_preproc_loader = DataLoader(train_preproc, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_preproc_loader = DataLoader(val_preproc, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>现在我们去掉了费时费力的前向传输，我们可以专注于训练我们的顶层模型。</p>
+<h3 id="顶层模型"><a href="#顶层模型" class="headerlink" title="顶层模型"></a>顶层模型</h3><p>该模型只有一层，与我们在“模型顶部”小节中使用的层相匹配。 其余模型配置部分保持不变：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">17</span>)</span><br><span class="line">top_model = nn.Sequential(nn.Linear(<span class="number">4096</span>, <span class="number">3</span>))</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_top = optim.Adam(top_model.parameters(), lr=<span class="number">3e-4</span>)</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们创建另一个 StepByStep 实例来使用预处理的数据集训练上面的模型。 由于它是一个很小的模型，我们可以训练它十多个时期，而不是只有一个：</p>
+<p>模型训练-顶部模型</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_top = StepByStep(top_model, multi_loss_fn, optimizer_top)</span><br><span class="line">sbs_top.set_loaders(train_preproc_loader, val_preproc_loader)</span><br><span class="line">sbs_top.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>看到了吗？非常的快。</p>
+<p>现在我们可以把训练好的这个模型附加到之前冻结的模型的顶层：</p>
+<p>更好模型的顶层</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_alex.model.classifier[<span class="number">6</span>] = top_model</span><br><span class="line"><span class="built_in">print</span>(sbs_alex.model.classifier)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Sequential(</span><br><span class="line">  (<span class="number">0</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">1</span>): Linear(in_features=<span class="number">9216</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">2</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">3</span>): Dropout(p=<span class="number">0.5</span>, inplace=<span class="literal">False</span>)</span><br><span class="line">  (<span class="number">4</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">4096</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">5</span>): ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">  (<span class="number">6</span>): Sequential(</span><br><span class="line">    (<span class="number">0</span>): Linear(in_features=<span class="number">4096</span>, out_features=<span class="number">3</span>, bias=<span class="literal">True</span>)</span><br><span class="line">  )</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>分类器的第六个元素是我们刚才训练好的那个小模型。让我们看看它在验证数据上的执行效果。</p>
+<blockquote>
+<p>注意，这次我们用了完整的模型，因此我们要使用原始的完整数据集而不是那个预处理的。</p>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader, sbs_alex.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">        [  <span class="number">0</span>,  <span class="number">84</span>],</span><br><span class="line">        [  <span class="number">0</span>,   <span class="number">0</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>输出结果和之前的一样。模型有点过拟合了，但是没关系，我们的目的是向你演示迁移学习的使用以及如何通过数据预处理来提升模型训练的效果。</p>
+<p>AlexNet 的执行很有趣，但是是时候继续下一个主题了。接下来，我们将聚焦于新的架构元素，它是 Inception 和 ResNet 模型的一部分。</p>
+<h2 id="辅助分类器（侧头）"><a href="#辅助分类器（侧头）" class="headerlink" title="辅助分类器（侧头）"></a>辅助分类器（侧头）</h2><p>第一个版本的Inception模型（如下图所示）引入了辅助分类器； 也就是说，附加到模型中间部分的侧头也将尝试执行分类，独立于网络最末端的典型主分类器。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fa9ec4b31-c0f7-44ba-a8d6-324195f42a43%2FUntitled.png?table=block&id=69bcace3-890f-49e6-8f90-2e5e28f7009a&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1550&userId=&cache=v2"></p>
+<p>三个分类器的交叉熵损失也是独立计算的，并加在一起到总损失中（尽管辅助损失乘以 0.3 倍）。 辅助分类器（和损失）仅在训练期间使用。 在评估阶段，仅考虑主分类器产生的逻辑。</p>
+<p>该技术最初是为了缓解梯度消失问题而开发的（下一章将详细介绍），但后来发现辅助分类器更有可能具有正则化效果。</p>
+<p>Inception 模型的第三个版本 (inception_v3) 作为 PyTorch 中的预训练模型提供，只有一个辅助分类器而不是两个，但如果我们使用此模型进行迁移学习，我们仍然需要进行一些调整。</p>
+<p>首先，我们加载预训练的模型，冻结其各层，并替换主分类器和辅助分类器的层：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># repeating import from the top for reference</span></span><br><span class="line"><span class="keyword">from</span> torchvision.models.inception <span class="keyword">import</span> Inception_V3_Weights</span><br><span class="line"></span><br><span class="line"><span class="comment"># UPDATED</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line"><span class="comment"># This is the recommended way of loading a pretrained</span></span><br><span class="line"><span class="comment"># model&#x27;s weights</span></span><br><span class="line">model = inception_v3(weights=Inception_V3_Weights.DEFAULT)</span><br><span class="line"><span class="comment"># model = inception_v3(pretrained=True)</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line"></span><br><span class="line">freeze_model(model)</span><br><span class="line"></span><br><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model.AuxLogits.fc = nn.Linear(<span class="number">768</span>, <span class="number">3</span>)</span><br><span class="line">model.fc = nn.Linear(<span class="number">2048</span>, <span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<p>不幸的是，我们不能使用标准的交叉熵损失，因为 Inception 模型输出两个张量，每个张量对应一个分类器（尽管可以通过将其 aux_logits 参数设置为 False 来强制它仅返回主分类器）。 但我们可以创建一个简单的函数来处理多个输出，计算相应的损失，并返回它们的总和：</p>
+<p>助手方法-包含多头的 Inception 损失</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">inception_loss</span>(<span class="params">outputs, labels</span>):</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        main, aux = outputs</span><br><span class="line">    <span class="keyword">except</span> ValueError:</span><br><span class="line">        main = outputs</span><br><span class="line">        aux = <span class="literal">None</span></span><br><span class="line">        loss_aux = <span class="number">0</span></span><br><span class="line">        </span><br><span class="line">    multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">    loss_main = multi_loss_fn(main, labels)</span><br><span class="line">    <span class="keyword">if</span> aux <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">        loss_aux = multi_loss_fn(aux, labels)</span><br><span class="line">    <span class="keyword">return</span> loss_main + <span class="number">0.4</span> * loss_aux</span><br></pre></td></tr></table></figure>
+
+<p>在这种情况下，辅助损失在添加到主损失之前先乘以 0.4。 现在，我们只缺少一个优化器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">optimizer_model = optim.Adam(model.parameters(), lr=<span class="number">3e-4</span>)</span><br><span class="line">sbs_incep = StepByStep(model, inception_loss, optimizer_model)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>等等，这次我们不对数据进行预处理吗？</p>
+</blockquote>
+<p>很不幸的是，不行。 preprocessed_dataset() 函数无法处理多个输出。 我不会为了处理 Inception 模型的特殊性而使过程变得复杂，而是坚持使用更简单（但更慢）的方法来训练最后一层，同时它仍然附加到模型的其余部分。</p>
+<p>Inception 模型的预期输入大小也与其他模型不同：299 而不是 224。因此，我们需要相应地重新创建数据加载器：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">normalizer = Normalize(mean=[<span class="number">0.485</span>, <span class="number">0.456</span>, <span class="number">0.406</span>],</span><br><span class="line">                       std=[<span class="number">0.229</span>, <span class="number">0.224</span>, <span class="number">0.225</span>])</span><br><span class="line"></span><br><span class="line">composer = Compose([Resize(<span class="number">299</span>),</span><br><span class="line">                    ToTensor(),</span><br><span class="line">                    normalizer])</span><br><span class="line"></span><br><span class="line">train_data = ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>, transform=composer)</span><br><span class="line">val_data = ImageFolder(root=<span class="string">&#x27;rps-test-set&#x27;</span>, transform=composer)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds a loader of each set</span></span><br><span class="line">train_loader = DataLoader(train_data, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_loader = DataLoader(val_data, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>现在都准备好了，我们来将模型进行一个迭代的训练，然后评估结果：</p>
+<p>模型训练</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_incep.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_incep.train(<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader, sbs_incep.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">106</span>, <span class="number">124</span>],</span><br><span class="line">        [ <span class="number">77</span>, <span class="number">124</span>],</span><br><span class="line">        [<span class="number">117</span>, <span class="number">124</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>评估数据集上的准确率达到了 89%，还不错。</p>
+<p>不过，Inception 模型不仅仅是辅助分类器。 让我们看看它的其他架构元素。</p>
+<h2 id="1✖️1卷积"><a href="#1✖️1卷积" class="headerlink" title="1✖️1卷积"></a>1✖️1卷积</h2><p>这个特定的架构元素并不完全是新的，但它是已知元素的某种特殊情况。 到目前为止，卷积层中使用的最小内核的大小为三乘三。 这些内核执行逐元素乘法，然后将结果元素相加，为应用它们的每个区域生成一个值，这是我们已经熟悉的内容。</p>
+<p>尺寸一一对应的内核的想法一开始有点违反直觉。 对于单个通道，该内核仅缩放其输入的值，而没有其他任何操作。 这似乎没什么用。</p>
+<p>但如果你有多个渠道，一切都会改变！ 还记得第六章中的三通道卷积吗？ 过滤器具有与其输入一样多的通道。 这意味着每个通道将独立缩放，并将结果相加，从而产生一个通道作为输出（每个过滤器）。</p>
+<blockquote>
+<p>一个 1*1的卷积可以用于减少通道数量，换句话说，它可以作为一个维度减少层。</p>
+</blockquote>
+<p>一图胜千言，我们看看图形化之后的样子：</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F81693902-15c9-4f33-8d1b-3ffea1f24847%2FUntitled.png?table=block&id=9d00d6b3-b5b4-4b00-955e-5b7436153b19&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1400&userId=&cache=v2"></p>
+<p>输入是RGB图像并且有两个filter； 每个过滤器具有三个 1x1 内核，每个内核对应输入的每个通道。 这些过滤器实际上在做什么？ 让我们来看看！</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F5800c1e2-7bff-46ba-b800-66fb4b9a859a%2FUntitled.png?table=block&id=3f896282-28b2-43a1-99e7-e1d0c070ed84&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1150&userId=&cache=v2"></p>
+<p>也许转换为公式更清楚：</p>
+<p>$$<br>Filter1:-1\ R+2\ G+0\ B \<br>Filter2:+2\ R+0\ G&#x3D;2\ B<br>$$</p>
+<blockquote>
+<p>使用 1x1 卷积的过滤器对应于输入通道的加权平均值。<br>换句话说，1x1 卷积是输入通道的线性组合，逐像素计算。</p>
+</blockquote>
+<p>还有另一种方法可以获得输入的线性组合：线性层，也称为全连接层。 执行 1x1 卷积类似于将线性层应用于其通道上的每个单独像素。</p>
+<blockquote>
+<p>这就是为什么 1x1 卷积被称为相当于全连接（线性）层的原因。</p>
+</blockquote>
+<p>在上面的示例中，两个过滤器中的每一个都会产生 RGB 通道的不同线性组合。 你想到了什么？ 在第 6 章中，我们看到可以使用彩色图像的红色、绿色和蓝色通道的线性组合来计算灰度图像。 因此，我们可以使用 1x1 卷积将图像转换为灰度！</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">scissors = Image.<span class="built_in">open</span>(<span class="string">&#x27;rps/scissors/scissors01-001.png&#x27;</span>)</span><br><span class="line">image = ToTensor()(scissors)[:<span class="number">3</span>, :, :].view(<span class="number">1</span>, <span class="number">3</span>, <span class="number">300</span>, <span class="number">300</span>)</span><br><span class="line"></span><br><span class="line">weights = torch.tensor([<span class="number">0.2126</span>, <span class="number">0.7152</span>, <span class="number">0.0722</span>]).view(<span class="number">1</span>, <span class="number">3</span>, <span class="number">1</span>, <span class="number">1</span>)</span><br><span class="line">convolved = F.conv2d(<span class="built_in">input</span>=image, weight=weights)</span><br><span class="line"></span><br><span class="line">converted = ToPILImage()(convolved[<span class="number">0</span>])</span><br><span class="line">grayscale = scissors.convert(<span class="string">&#x27;L&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fcf89453a-29b8-421d-95af-6cf49498aa18%2FUntitled.png?table=block&id=abda2e98-e791-4ad5-ac74-72d48ee8d933&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=770&userId=&cache=v2"></p>
+<p>看？ 它们是一样的……或者是吗？ 如果你仔细看，也许能够注意到两种灰色阴影之间的细微差别。 不过，它与卷积的使用没有任何关系，事实证明，PIL 使用略有不同的权重将 RGB 转换为灰度。</p>
+<blockquote>
+<p>PIL 使用的权重为红色 0.299、蓝色 0.587 和绿色 0.114，即“ITU-R 601-2 亮度变换”。 我们的权重不同，因为我们使用了色度转换为灰度。 如果您想了解更多信息，请查看维基百科关于<a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Grayscale">灰度</a>的文章</p>
+</blockquote>
+<p>你可以将彩色图像转换为灰度图像视为减小图像的尺寸，因为输出的大小是输入大小的三分之一（一个通道而不是三个通道）。 这意味着接收它作为自己的输入的层中的参数减少了三倍，并且它允许网络变得更深（和更宽）。</p>
+<blockquote>
+<p>我们需要继续深入。</p>
+</blockquote>
+<h2 id="Inception模块"><a href="#Inception模块" class="headerlink" title="Inception模块"></a>Inception模块</h2><p>我们来谈谈 Inception 模块。 随着时间的推移，它有很多版本，但我们只关注前两个：常规版本和带有降维层的版本。 下图描述了这两个版本。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F20dcbafa-3573-419a-9c0d-3b44b9bd5832%2FUntitled.png?table=block&id=0dc6121a-6862-4e76-a567-b4c640fa8e84&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1390&userId=&cache=v2"></p>
+<p>在常规版本中，1x1 卷积不用作降维层。 每个卷积分支都会生成给定数量的通道，而最大池分支会生成与接收到的输入一样多的通道。 最后，所有通道都堆叠（连接）在一起。</p>
+<blockquote>
+<p>“老实说，我对通道和过滤器有点困惑……它们是否相同？！还有内核与他们的关系是什么？”</p>
+</blockquote>
+<p>这确实有点令人困惑——让我们尝试整理一下关于过滤器、内核和通道的概念。</p>
+<ul>
+<li>每个过滤器有多个通道，其通道数量与卷积（输入的）的图像一样多。</li>
+<li>过滤器&#x2F;内核的每个通道都是一个小方阵（在相应的输入通道上进行卷积）。</li>
+<li>卷积产生与过滤器器（输出）一样多的通道。</li>
+</ul>
+<p>例如，我们可能有一个 RGB 图像作为输入（三个通道），并使用两个过滤器（每个过滤器都有自己的三个通道来匹配输入（1））来生成两个通道作为输出 (3)。</p>
+<p>但是如果我们开始使用“过滤器”来指定其他东西，事情就会变得非常混乱：</p>
+<ul>
+<li>过滤器&#x2F;内核的每个通道通常被称为“过滤器”本身。</li>
+<li>通过将过滤器与输入图像进行卷积而产生的输出的每个通道通常也称为“过滤器”。</li>
+</ul>
+<p>在示例中，我们将有六个“过滤器”（而不是两个每个具有三个通道的过滤器），并且我们将产生两个“过滤器”作为输出（而不是两个通道）。 这很令人困惑！</p>
+<p>我们在这里避免这些混乱的定义，因此我们使用通道串联（或者叫堆叠）而不是令人困惑的“过滤器串联”。</p>
+<p>弄清楚这一点后，我们可以返回到 Inception 模块本身。 正如我们所看到的，常规版本只是简单地堆叠具有不同滤波器&#x2F;内核大小的卷积的输出通道。 那其他版本呢？</p>
+<p>也这样做，但具有降维层的 Inception 模块使用 1x1 卷积来：</p>
+<ul>
+<li>减少3x3 和5x5 卷积分支的输入通道数量； 和</li>
+<li>减少最大池分支的输出通道数。</li>
+</ul>
+<p>3x3 和 5x5 卷积分支仍可能输出许多通道（一个用于每个过滤器），但每个过滤器都对数量减少的输入通道进行卷积。</p>
+<p>你可以想象 RGB 到灰度的转换：它不会对彩色图像使用三通道卷积（如第 6 章中所示），而是对灰度（降维）使用单通道滤波器（如第 5 章中所示） 图片。 对于 3x3 过滤器&#x2F;内核，这意味着使用九个参数而不是二十七个。 我们绝对可以更深入！</p>
+<p>我们来看看 Inception 模型的代码看起来是什么样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Inception</span>(nn.Module):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, in_channels</span>):</span><br><span class="line">        <span class="built_in">super</span>(Inception, self).__init__()</span><br><span class="line">        <span class="comment"># in_channels@HxW -&gt; 2@HxW</span></span><br><span class="line">        self.branch1x1_1 = nn.Conv2d(in_channels, <span class="number">2</span>, kernel_size=<span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># in_channels@HxW -&gt; 2@HxW -&gt; 3@HxW</span></span><br><span class="line">        self.branch5x5_1 = nn.Conv2d(in_channels, <span class="number">2</span>, kernel_size=<span class="number">1</span>)</span><br><span class="line">        self.branch5x5_2 = nn.Conv2d(<span class="number">2</span>, <span class="number">3</span>, kernel_size=<span class="number">5</span>, padding=<span class="number">2</span>)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># in_channels@HxW -&gt; 2@HxW -&gt; 3@HxW</span></span><br><span class="line">        self.branch3x3_1 = nn.Conv2d(in_channels, <span class="number">2</span>, kernel_size=<span class="number">1</span>)</span><br><span class="line">        self.branch3x3_2 = nn.Conv2d(<span class="number">2</span>, <span class="number">3</span>, kernel_size=<span class="number">3</span>, padding=<span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># in_channels@HxW -&gt; in_channels@HxW -&gt; 1@HxW</span></span><br><span class="line">        self.branch_pool_1 = nn.AvgPool2d(kernel_size=<span class="number">3</span>, stride=<span class="number">1</span>, padding=<span class="number">1</span>)</span><br><span class="line">        self.branch_pool_2 = nn.Conv2d(in_channels, <span class="number">2</span>, kernel_size=<span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">        <span class="comment"># Produces 2 channels</span></span><br><span class="line">        branch1x1 = self.branch1x1_1(x)</span><br><span class="line">        <span class="comment"># Produces 3 channels</span></span><br><span class="line">        branch5x5 = self.branch5x5_1(x)</span><br><span class="line">        branch5x5 = self.branch5x5_2(branch5x5)</span><br><span class="line">        <span class="comment"># Produces 3 channels</span></span><br><span class="line">        branch3x3 = self.branch3x3_1(x)</span><br><span class="line">        branch3x3 = self.branch3x3_2(branch3x3)</span><br><span class="line">        <span class="comment"># Produces 2 channels</span></span><br><span class="line">        branch_pool = self.branch_pool_1(x)</span><br><span class="line">        branch_pool = self.branch_pool_2(branch_pool)</span><br><span class="line">        <span class="comment"># Concatenates all channels together (10)</span></span><br><span class="line">        outputs = torch.cat([branch1x1, branch5x5, branch3x3, branch_pool], <span class="number">1</span>)</span><br><span class="line">        <span class="keyword">return</span> outputs      </span><br></pre></td></tr></table></figure>
+
+<p>构造函数方法定义了四个分支使用的七个元素（您可以在图 7.7 中识别每个元素）。 在此示例中，我已配置所有 1x1 卷积以分别生成两个通道，但并不要求它们都具有相同数量的输出通道。 这同样适用于 3x3 和 5x5 卷积分支：尽管我已将它们配置为各自产生相同数量的通道（三个），但这不是必需的。</p>
+<blockquote>
+<p>但是，要求所有分支都生成具有匹配高度和宽度的输出。 这意味着必须根据内核大小调整填充才能输出正确的尺寸。</p>
+</blockquote>
+<p>如果我们用Inception 模块来跑上面的例子图像呢？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">inception = Inception(in_channels=<span class="number">3</span>)</span><br><span class="line">output = inception(image)</span><br><span class="line">output.shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.Size([<span class="number">1</span>, <span class="number">10</span>, <span class="number">300</span>, <span class="number">300</span>])</span><br></pre></td></tr></table></figure>
+
+<p>和预期的一样，我们得到了 10 个通道的输出。</p>
+<p>正如您所看到的，Inception 模块背后的想法实际上非常简单。 后续版本的架构略有不同（例如将 5x5 卷积连续切换为两个 3x3 卷积），但总体结构仍然保留。 不过，还有一件事。</p>
+<p>如果你在 PyTorch 中检查 Inception 的代码，你会发现它并没有直接使用 nn.Conv2d，而是使用了名为 BasicConv2d 的东西（如下代码）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">BasicConv2d</span>(nn.Module):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, in_channels, out_channels, **kwargs</span>):</span><br><span class="line">        <span class="built_in">super</span>(BasicConv2d, self).__init__()</span><br><span class="line">        self.conv = nn.Conv2d(in_channels, out_channels, bias=<span class="literal">False</span>, **kwargs)</span><br><span class="line">        self.bn = nn.BatchNorm2d(out_channels, eps=<span class="number">0.001</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">        x = self.conv(x)</span><br><span class="line">        x = self.bn(x)</span><br><span class="line">        <span class="keyword">return</span> F.relu(x, inplace=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+<p>当然，它的主要组件仍然是 nn.Conv2d，但它还将 ReLU 激活函数应用于最终输出。 但更重要的是，它在两者之间调用 nn.BatchNorm2d。</p>
+<blockquote>
+<p>那是什么？</p>
+</blockquote>
+<p>那是。。。批量归一化（标准化）。</p>
+<h2 id="批量归一化"><a href="#批量归一化" class="headerlink" title="批量归一化"></a>批量归一化</h2><blockquote>
+<p>批量归一化层是许多现代架构中非常重要的组成部分。 尽管它的内部工作原理并不复杂（您将在下面的段落中看到），但它对模型训练的影响肯定是复杂的。 从它的放置（激活函数之前或之后）到它的行为受小批量大小影响的方式，我尝试在正文的旁白中简要阐述主要讨论点。 这旨在让您快速了解该主题，但绝不是对此主题的全面了解。</p>
+</blockquote>
+<p>我们在第 4 章中简要讨论了标准化层的必要性，以防止（或减轻）通常称为“内部协变量偏移”的问题，这对于在不同层中具有不同的激活值分布来说很有趣。 一般来说，我们希望所有层都产生具有相似分布的激活值，理想情况下均值和单位标准差为零。</p>
+<p>听起来是不是很熟悉？ 这就是我们在第 0 章中对特征值所做的事情，我们将它们标准化。 现在，批量归一化将执行与此非常相似的操作，但有一些重要的区别：</p>
+<ul>
+<li>批量归一化不是标准化特征（即整个模型的输入），而是标准化层的激活值（即下一层的输入），以便它们具有零均值和单位标准差。</li>
+<li>批量归一化不是计算整个训练集的统计数据（均值和标准差），而是计算每个小批量的统计数据。</li>
+<li>批量归一化可以对标准化输出执行可选的仿射变换； 也就是说，缩放它并为其添加一个常数（在这种情况下，缩放因子和常数都是模型学习的参数）。</li>
+</ul>
+<h3 id="之前还是之后"><a href="#之前还是之后" class="headerlink" title="之前还是之后"></a>之前还是之后</h3><ul>
+<li><p>关于批量归一化有一个非常常见的问题：</p>
+<p>  “我应该将批归一化层放在激活函数之前还是之后？”</p>
+<p>  根据我上面所说的，批量归一化标准化了层的激活值，唯一合乎逻辑的结论是批量归一化层应该位于激活函数之后。 这是有道理的，对吧？ 在标准化之后放置激活函数将完全修改下一层的输入并破坏批量标准化的目的。</p>
+<p>  或者？</p>
+<p>  有些人认为将批量归一化层放在激活函数之前是可以的。 事实上，如果你看一下Inception模块，它就是这样的。 一方面，输出不会具有零均值和单位标准差（例如，ReLU 会消除负值）。 另一方面，使用像这样放置的批量归一化，每个层都应该发生同样的事情，因此不同层之间的分布仍然相似。</p>
+<p>  所以，这个问题毕竟没有一个简单的答案。</p>
+</li>
+</ul>
+<p>对于数量为 n 的一个小批量数据，给其一个特征值 x，批量归一化将首先计算这个小批量的统计值：</p>
+<p>$$<br>\overline {X}&#x3D;\frac{1}{n} \sum_{i&#x3D;1}^nxi<br>$$</p>
+<p>$$<br>\sigma(X)&#x3D;\sqrt{\frac{1}{n} \sum_{n&#x3D;1}^n(x_i-\overline X)^2}<br>$$</p>
+<p>然后他会用这些统计值来归一化小批量数据中的每一个数据：</p>
+<p>$$<br>standardized\ x_i&#x3D;\frac{x_i- \overline X}{\sigma(X)+\epsilon}<br>$$</p>
+<p>到目前为止，这与特征标准化几乎相同，除了分母中添加了 epsilon 项以使其在数值上稳定（其典型值为 1e-5）。</p>
+<blockquote>
+<p>由于批量归一化层旨在产生零均值输出，因此它使其前面的层中的偏差完全多余。 学习一个将被下一层立即消除的偏差将是一种计算的浪费。<br>因此，最好的做法是在前一层中设置bias&#x3D;False（您可以在上一节的BasicConv2d代码中查看它）。</p>
+</blockquote>
+<p>实际的区别是最后可选的仿射变换：</p>
+<p>$$<br>batch\ normed\ x_i&#x3D;b+w\ standardized\ x_i<br>$$</p>
+<p>如果您选择不执行仿射变换，则参数 b 和 w 将自动分别设置为 0 和 1。 尽管我选择了熟悉的 b 和 w 来表示这些参数，所以更清楚的是，这种转换没有什么特别的，您会在文献中发现它们分别表示为 beta 和 gamma。 此外，这些术语可能以不同的顺序出现，如下所示：</p>
+<p>$$<br>batch\ normed\ x_i&#x3D;standardized\ x_i \ \gamma+\beta<br>$$</p>
+<p>我们现在将仿射变换放在一边，专注于批量归一化的另一个方面：它不仅计算每个小批量的统计数据，而且还跟踪……</p>
+<h3 id="运行统计"><a href="#运行统计" class="headerlink" title="运行统计"></a>运行统计</h3><p>由于批量归一化计算小批量的统计数据，而小批量包含少量的点，因此这些统计数据可能会波动很大。 小批量越小，统计数据波动就越大。 但是，更重要的是，对于看不见的数据（例如验证集中的数据点）应该使用哪些统计数据？</p>
+<p>在评估阶段（或当模型已经训练和部署时），没有小批量。 向模型提供单个输入来获得预测是非常自然的。 显然，单个数据点没有统计数据：它是它自己的均值，方差为零。 你如何标准化它？ 你不能！ 所以，我重复一下这个问题：</p>
+<blockquote>
+<p>“当对未见过的数据应用批量归一化时，模型应该使用哪些统计数据？”</p>
+</blockquote>
+<p>跟踪运行统计数据（即统计数据的移动平均值）怎么样？ 这是平滑波动的好方法。 此外，每个数据点都有机会为统计做出贡献。 这就是批量归一化的作用。</p>
+<p>让我们使用代码来看看它的实际效果——我们将使用一个包含 200 个随机数据点和两个特征的虚拟数据集：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">23</span>)</span><br><span class="line">dummy_points = torch.randn((<span class="number">200</span>, <span class="number">2</span>)) + torch.rand((<span class="number">200</span>, <span class="number">2</span>)) * <span class="number">2</span></span><br><span class="line">dummy_labels = torch.randint(<span class="number">2</span>, (<span class="number">200</span>, <span class="number">1</span>))</span><br><span class="line">dummy_dataset = TensorDataset(dummy_points, dummy_labels)</span><br><span class="line">dummy_loader = DataLoader(dummy_dataset, batch_size=<span class="number">64</span>, shuffle=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+<h3 id="仿射变换和内部协变量平移-ICS"><a href="#仿射变换和内部协变量平移-ICS" class="headerlink" title="仿射变换和内部协变量平移 (ICS)"></a>仿射变换和内部协变量平移 (ICS)</h3><ul>
+<li>如果开发批量归一化是为了通过产生均值和单位标准差为零的输出来减轻 ICS（请记住，ICS 只是在不同层中具有不同的激活值分布），那么仿射变换如何适应这种情况呢？<br>好吧，从理论上讲，它不能——如果归一化层可以学习任何仿射变换，那么它的输出就可以具有任何均值和任何标准差。 跨不同层生成相似的分布以减轻内部协变量偏移就这么多了！ 尽管如此，PyTorch 中的批量归一化层默认执行仿射变换。<br>如果你看一下 Inception 模块，它使用 PyTorch 的默认值。 因此，它的批归一化层不仅执行仿射变换，而且放置在激活函数之前。 显然，这根本无法缓解 ICS！ 但它仍然成功地应用于许多模型架构中，例如 Inception。为什么？<br>说实话，减轻 ICS 是批量归一化背后的最初动机，但后来发现这种技术实际上出于不同的原因改进了模型训练。这是一个情节转折！<br>这一切都归结为使损失表面更平滑。 实际上，我们已经在第 0 章中看到了在损失表面上使用标准化的效果：它变得更加碗形，从而使梯度下降更容易找到最小值。 你能想象在千维特征空间中吗？ 不？！ 我也不！ 但请坚持这个想法，因为我们将在“残差连接”部分中再次讨论它</li>
+</ul>
+<p>大小为 64 的小批量足够小，可以有波动的统计数据，也足够大，可以绘制合适的直方图。让我们获取三个小批量并绘制与第一个小批量中的每个特征相对应的直方图：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">iterator = <span class="built_in">iter</span>(dummy_loader)</span><br><span class="line">batch1 = <span class="built_in">next</span>(iterator)</span><br><span class="line">batch2 = <span class="built_in">next</span>(iterator)</span><br><span class="line">batch3 = <span class="built_in">next</span>(iterator)</span><br></pre></td></tr></table></figure>
+
+<h3 id="批量归一化、小批量大小和正则化"><a href="#批量归一化、小批量大小和正则化" class="headerlink" title="批量归一化、小批量大小和正则化"></a>批量归一化、小批量大小和正则化</h3><ul>
+<li>有一个说法是，批量归一化对小批量数据的尺寸施加了下限。<br>问题在于统计数据的自然波动。 如上所述，小批量越小，统计数据的波动就越大。 如果它们太小，它们的统计数据可能会与整个训练集的总体统计数据显着偏离，从而对模型的训练产生负面影响。<br>对于那些不可能有更大的小批量（例如由于硬件限制）来防止上述问题的情况，还可以使用批量重整化（是的，这就是一件事！）。 不过，这种技术超出了本书的范围。<br>另一方面，统计数据的波动实际上为训练过程注入了随机性，从而产生正则化效果，对模型的训练产生积极影响。<br>在第六章中，我们讨论了另一个正则化过程：dropout。 它注入随机性的方式是将一些输入归零，这样它的输出也会略有变化或波动。<br>由于批量归一化层和 dropout 层都具有正则化效果，因此组合这两个层实际上可能会损害模型性能。</li>
+</ul>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2Fea276ce2-57ec-4f78-9ba6-fe4212cb523a%2FUntitled.png?table=block&id=1923fe3f-7c35-4db1-ac68-d3985e7f65c8&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1510&userId=&cache=v2"></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mean1, var1 = batch1[<span class="number">0</span>].mean(axis=<span class="number">0</span>), batch1[<span class="number">0</span>].var(axis=<span class="number">0</span>)</span><br><span class="line">mean1, var1</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([<span class="number">0.9850</span>, <span class="number">1.0381</span>]), tensor([<span class="number">1.4802</span>, <span class="number">1.1832</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>这些特征值肯定可以从一些标准化中受益。 我们将使用nn.BatchNorm1d 来完成它：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">batch_normalizer = nn.BatchNorm1d(num_features=<span class="number">2</span>, affine=<span class="literal">False</span>, momentum=<span class="literal">None</span>)</span><br><span class="line">batch_normalizer.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;running_mean&#x27;</span>, tensor([<span class="number">0.</span>, <span class="number">0.</span>])),</span><br><span class="line">             (<span class="string">&#x27;running_var&#x27;</span>, tensor([<span class="number">1.</span>, <span class="number">1.</span>])),</span><br><span class="line">             (<span class="string">&#x27;num_batches_tracked&#x27;</span>, tensor(<span class="number">0</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>num_features 参数应与输入的维度匹配。 为了简单起见，我们不会使用仿射变换 (affine&#x3D;False) 或动量（本节稍后会详细介绍）。</p>
+<p>批标准化器的 state_dict() 告诉我们运行均值和方差的初始值，以及它已用于计算运行统计数据的批数量。 让我们看看在标准化第一个小批量后它们会发生什么：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">normed1 = batch_normalizer(batch1[<span class="number">0</span>])</span><br><span class="line">batch_normalizer.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;running_mean&#x27;</span>, tensor([<span class="number">0.9850</span>, <span class="number">1.0381</span>])),</span><br><span class="line">             (<span class="string">&#x27;running_var&#x27;</span>, tensor([<span class="number">1.4802</span>, <span class="number">1.1832</span>])),</span><br><span class="line">             (<span class="string">&#x27;num_batches_tracked&#x27;</span>, tensor(<span class="number">1</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>太好了，它与我们之前计算的统计数据相符。 现在结果值应该标准化了，对吗？ 让我们仔细检查一下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">normed1.mean(axis=<span class="number">0</span>), normed1.var(axis=<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([<span class="number">7.4506e-09</span>, <span class="number">2.8871e-08</span>]), tensor([<span class="number">1.0159</span>, <span class="number">1.0159</span>]))</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>“这看起来有点不对劲……方差不应该正好是1吗？”</p>
+</blockquote>
+<p>是的，也不是。 我承认我发现这也有点烦人 - 运行方差是无偏的，但小批量数据点的实际标准化使用有偏方差。</p>
+<blockquote>
+<p>这两者有什么区别？</p>
+</blockquote>
+<p>区别仅在于分母：</p>
+<p>$$<br>Biased\ Var(X)&#x3D;\frac{1}{n} \ \sum_{i&#x3D;1}^n(x_i-\overline X)^2 \<br>Var(X)&#x3D;\frac{1}{n-1}\sum_{i&#x3D;1}^n(x_i-\overline X)^2<br>$$</p>
+<p>这实际上是通过设计实现的。 我们不在这里讨论推导过程，但是，如果您想仔细检查标准化小批量的方差，您可以使用以下内容：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">normed1.var(axis=<span class="number">0</span>, unbiased=<span class="literal">False</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([<span class="number">1.0000</span>, <span class="number">1.0000</span>])</span><br></pre></td></tr></table></figure>
+
+<p>这还差不多！ 我们还可以再次绘制直方图，以更轻松地可视化批量归一化的效果。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F01b74986-2953-4a3e-a4b0-978fbf802654%2FUntitled.png?table=block&id=3ed1de88-f514-4275-8ba9-f1246234e82b&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1480&userId=&cache=v2"></p>
+<p>尽管批量归一化实现了均值和单位标准差为零的输出，但输出的总体分布仍然主要由输入的分布决定。</p>
+<blockquote>
+<p>批量归一化不会将其转变为正态分布。</p>
+</blockquote>
+<p>如果我们将第二个小批量提供给批量标准化器，它将相应地更新其运行统计信息：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">normed2 = batch_normalizer(batch2[<span class="number">0</span>])</span><br><span class="line">batch_normalizer.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;running_mean&#x27;</span>, tensor([<span class="number">0.9611</span>, <span class="number">0.9964</span>])),</span><br><span class="line">             (<span class="string">&#x27;running_var&#x27;</span>, tensor([<span class="number">1.4247</span>, <span class="number">1.0460</span>])),</span><br><span class="line">             (<span class="string">&#x27;num_batches_tracked&#x27;</span>, tensor(<span class="number">2</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>运行平均值和运行方差都是小批量的简单平均值：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">mean2, var2 = batch2[<span class="number">0</span>].mean(axis=<span class="number">0</span>), batch2[<span class="number">0</span>].var(axis=<span class="number">0</span>)</span><br><span class="line">running_mean, running_var = (mean1 + mean2) / <span class="number">2</span>, (var1 + var2) / <span class="number">2</span></span><br><span class="line">running_mean, running_var</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([<span class="number">0.9611</span>, <span class="number">0.9964</span>]), tensor([<span class="number">1.4247</span>, <span class="number">1.0460</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>现在，假设我们已经完成训练（即使我们没有实际的模型），并且我们正在使用第三个小批量进行评估。</p>
+<h3 id="评估阶段"><a href="#评估阶段" class="headerlink" title="评估阶段"></a>评估阶段</h3><p>就像 dropout 一样，批量归一化根据模式（训练或评估）表现出不同的行为。 我们已经看到了它在训练阶段的作用。 我们还知道，计算非训练数据的统计数据是没有意义的。</p>
+<p>因此，在评估阶段，它将使用训练期间计算的运行统计数据来标准化新数据（在我们的小示例中是第三个小批量）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">batch_normalizer.<span class="built_in">eval</span>()</span><br><span class="line">normed3 = batch_normalizer(batch3[<span class="number">0</span>])</span><br><span class="line">normed3.mean(axis=<span class="number">0</span>), normed3.var(axis=<span class="number">0</span>, unbiased=<span class="literal">False</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">(tensor([-<span class="number">0.0201</span>,  <span class="number">0.2208</span>]), tensor([<span class="number">0.7170</span>, <span class="number">1.0761</span>]))</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>是不是又有点不对劲了？</p>
+</blockquote>
+<p>实际上，不会，因为它是使用训练数据计算的统计数据来标准化看不见的数据，所以上述结果是预期的。 平均值约为 0，标准差约为 1。</p>
+<h3 id="动量"><a href="#动量" class="headerlink" title="动量"></a>动量</h3><p>还有一种计算运行统计数据的替代方法：它不使用简单平均值，而是使用统计数据的指数加权移动平均值 (EWMA)。</p>
+<p>然而，命名约定非常不好：EWMA 的 alpha 参数被命名为动量，这增加了混乱。 PyTorch 的文档中甚至有一条关于此的警告：</p>
+<ul>
+<li>“这种动量论证与优化器类中使用的动量论证和传统的动量概念不同。”</li>
+</ul>
+<blockquote>
+<p>解决办法是：忽略令人困惑的命名约定，将“动量”参数视为常规 EWMA 的 alpha 参数。</p>
+</blockquote>
+<p>该文档在介绍“动量”的数学公式时还使用 x 来指代特定的统计数据，这根本没有帮助。<br>因此，为了清楚地说明正在计算的内容，我提出了以下公式：</p>
+<p>$$<br>EWMA_t(\alpha,x)&#x3D;\alpha x_t+(1&#x3D;\alpha) \ EWMA_{t-1}(\alpha,x) \<br>running\ stat_x&#x3D;”momentum”stat_t+(1-“momentum”)\ running\ stat_{t-1}<br>$$</p>
+<p>我们来实践一下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">batch_normalizer_mom = nn.BatchNorm1d(num_features=<span class="number">2</span>, affine=<span class="literal">False</span>, momentum=<span class="number">0.1</span>)</span><br><span class="line">batch_normalizer_mom.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;running_mean&#x27;</span>, tensor([<span class="number">0.</span>, <span class="number">0.</span>])),</span><br><span class="line">             (<span class="string">&#x27;running_var&#x27;</span>, tensor([<span class="number">1.</span>, <span class="number">1.</span>])),</span><br><span class="line">             (<span class="string">&#x27;num_batches_tracked&#x27;</span>, tensor(<span class="number">0</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>运行均值和运行方差的初始值分别为零和一。 这些将是时间 t-1 时的运行统计数据。 如果我们运行第一个小批量，会发生什么？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">normed1_mom = batch_normalizer_mom(batch1[<span class="number">0</span>])</span><br><span class="line">batch_normalizer_mom.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;running_mean&#x27;</span>, tensor([<span class="number">0.0985</span>, <span class="number">0.1038</span>])),</span><br><span class="line">             (<span class="string">&#x27;running_var&#x27;</span>, tensor([<span class="number">1.0480</span>, <span class="number">1.0183</span>])),</span><br><span class="line">             (<span class="string">&#x27;num_batches_tracked&#x27;</span>, tensor(<span class="number">1</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>在小批量统计数据乘以“动量”参数后，运行统计数据几乎没有变化。 我们可以轻松验证运行方法的结果：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">running_mean = torch.zeros((<span class="number">1</span>, <span class="number">2</span>))</span><br><span class="line">running_mean = <span class="number">0.1</span> * batch1[<span class="number">0</span>].mean(axis=<span class="number">0</span>) + (<span class="number">1</span> - <span class="number">0.1</span>) * running_mean</span><br><span class="line">running_mean</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">0.0985</span>, <span class="number">0.1038</span>]])</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>“很好，但是到目前为止我们只使用了 nn.BatchNorm1d，Inception 模块实际上使用了 nn.BatchNorm2d…”</p>
+</blockquote>
+<p>很高兴你提出来！</p>
+<h3 id="BatchNorm2d"><a href="#BatchNorm2d" class="headerlink" title="BatchNorm2d"></a><strong>BatchNorm2d</strong></h3><p>一维批量归一化和二维批量归一化之间的区别实际上非常简单：前者标准化特征（列），而后者标准化通道（像素）。</p>
+<p>从代码很容易看出：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">39</span>)</span><br><span class="line">dummy_images = torch.rand((<span class="number">200</span>, <span class="number">3</span>, <span class="number">10</span>, <span class="number">10</span>))</span><br><span class="line">dummy_labels = torch.randint(<span class="number">2</span>, (<span class="number">200</span>, <span class="number">1</span>))</span><br><span class="line">dummy_dataset = TensorDataset(dummy_images, dummy_labels)</span><br><span class="line">dummy_loader = DataLoader(dummy_dataset, batch_size=<span class="number">64</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line"></span><br><span class="line">iterator = <span class="built_in">iter</span>(dummy_loader)</span><br><span class="line">batch1 = <span class="built_in">next</span>(iterator)</span><br><span class="line">batch1[<span class="number">0</span>].shape</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">torch.Size([<span class="number">64</span>, <span class="number">3</span>, <span class="number">10</span>, <span class="number">10</span>])</span><br></pre></td></tr></table></figure>
+
+<p>上面的代码创建了一个由 200 个大小为 10x10 像素的彩色（三通道）图像组成的虚拟数据集，然后检索第一个小批量。 小批量具有预期的 NCHW 形状。</p>
+<p>批量归一化是在 C 维度上完成的，因此它将使用剩余维度（N、H 和 W（轴&#x3D;[0, 2, 3]））计算统计数据——表示来自每个图像的给定通道的所有像素。 小批量。</p>
+<p>nn.BatchNorm2d 层与其一维对应层具有相同的参数，但其 num_features 参数必须与输入的通道数匹配：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">batch_normalizer = nn.BatchNorm2d(num_features=<span class="number">3</span>, affine=<span class="literal">False</span>, momentum=<span class="literal">None</span>)</span><br><span class="line">normed1 = batch_normalizer(batch1[<span class="number">0</span>])</span><br><span class="line">normed1.mean(axis=[<span class="number">0</span>, <span class="number">2</span>, <span class="number">3</span>]), normed1.var(axis=[<span class="number">0</span>, <span class="number">2</span>, <span class="number">3</span>], unbiased=<span class="literal">False</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">(tensor([ <span class="number">2.3283e-08</span>, -<span class="number">2.3693e-08</span>,  <span class="number">8.8960e-08</span>]),</span><br><span class="line"> tensor([<span class="number">0.9999</span>, <span class="number">0.9999</span>, <span class="number">0.9999</span>]))</span><br></pre></td></tr></table></figure>
+
+<p>正如预期的那样，输出中的每个通道的像素值均值为零且单位标准差。</p>
+<h3 id="其它归一化"><a href="#其它归一化" class="headerlink" title="其它归一化"></a>其它归一化</h3><p>批量归一化无疑是最流行的归一化类型，但它不是唯一的一种。 如果查看 PyTorch 关于归一化层的文档，会看到许多替代方案，例如 nn.SyncBatchNorm。 但是，就像批量重整化技术一样，它们超出了本书的范围。</p>
+<h3 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h3><p>这可能是迄今为止本书中最具挑战性的部分。 它涵盖了很多信息，但只触及了这个主题的表面。 因此，我对我们已经解决的要点进行了一个小结：</p>
+<ul>
+<li>在训练期间，批量归一化计算每个单独小批量的统计数据（均值和方差），并使用这些统计数据生成标准化输出。</li>
+<li>从一个小批量到下一个小批量的统计波动将随机性引入到过程中，从而具有正则化效果。</li>
+<li>由于批量归一化的正则化效果，如果与其他正则化技术（如 dropout）结合使用，可能效果不佳。</li>
+<li>在评估期间，批量归一化使用训练期间计算的统计数据的（平滑）平均值。</li>
+<li>其最初的动机是通过在不同层之间产生相似的分布来解决所谓的内部协变量偏移，但后来发现它实际上通过使损失表面更平滑来改进模型训练。</li>
+<li>批量归一化可以放置在激活函数之前或之后； 没有“正确”或“错误”的方法。</li>
+<li>批量归一化层之前的层应设置其bias&#x3D;False，以避免无用的计算。</li>
+<li>尽管批量归一化的工作原理与最初想象的不同，但解决内部协变量偏移仍然可能带来好处，例如解决梯度消失问题，这是下一章的主题之一。</li>
+</ul>
+<p>因此，我们了解到批量归一化可以通过使损失表面更平滑来加速训练。 事实证明，还有另一种技术可以按照这些思路工作……</p>
+<h2 id="残差连接"><a href="#残差连接" class="headerlink" title="残差连接"></a>残差连接</h2><p>实际上，残差连接的想法非常简单：将输入传递给层和激活函数后，输入本身将添加到结果中。 就是这样！ 简单、优雅、有效。</p>
+<blockquote>
+<p>为什么我想将输入添加到结果中？</p>
+</blockquote>
+<h3 id="学习身份"><a href="#学习身份" class="headerlink" title="学习身份"></a>学习身份</h3><p>神经网络及其非线性（激活函数）非常棒！ 我们在“奖励”一章中看到了模型如何设法扭曲特征空间并将其转变为可以在激活的特征空间中用直线分隔类的程度。 但非线性既是福也是祸：它们使得模型学习恒等函数变得极其困难。</p>
+<p>为了说明这一点，我们从一个包含 100 个具有单个特征的随机数据点的虚拟数据集开始。 但它不仅仅是特征值，也是标签。 数据准备相当简单：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">23</span>)</span><br><span class="line">dummy_points = torch.randn((<span class="number">100</span>, <span class="number">1</span>))</span><br><span class="line">dummy_dataset = TensorDataset(dummy_points, dummy_points)</span><br><span class="line">dummy_loader = DataLoader(dummy_dataset, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果我们使用简单的线性模型，那是理所当然的，对吧？ 该模型只会保持输入不变（将其乘以1（权重），然后加0（偏差）。 但如果我们引入非线性会发生什么？ 让我们配置模型并训练它，看看会发生什么：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Dummy</span>(nn.Module):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">super</span>(Dummy, self).__init__()</span><br><span class="line">        self.linear = nn.Linear(<span class="number">1</span>, <span class="number">1</span>)</span><br><span class="line">        self.activation = nn.ReLU()</span><br><span class="line">        </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">        out = self.linear(x)</span><br><span class="line">        out = self.activation(out)</span><br><span class="line">        <span class="keyword">return</span> out</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">555</span>)</span><br><span class="line">dummy_model = Dummy()</span><br><span class="line">dummy_loss_fn = nn.MSELoss()</span><br><span class="line">dummy_optimizer = optim.SGD(dummy_model.parameters(), lr=<span class="number">0.1</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">dummy_sbs = StepByStep(dummy_model, dummy_loss_fn, dummy_optimizer)</span><br><span class="line">dummy_sbs.set_loaders(dummy_loader)</span><br><span class="line">dummy_sbs.train(<span class="number">200</span>)</span><br></pre></td></tr></table></figure>
+
+<p>如果我们将实际标签与模型的预测进行比较，我们会发现它无法学习恒等函数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">np.concatenate([dummy_points[:<span class="number">5</span>].numpy(), </span><br><span class="line">                dummy_sbs.predict(dummy_points)[:<span class="number">5</span>]], axis=<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">array([[-<span class="number">0.9012059</span> ,  <span class="number">0.</span>        ],</span><br><span class="line">         [ <span class="number">0.56559485</span>,  <span class="number">0.56559485</span>],</span><br><span class="line">         [-<span class="number">0.48822638</span>,  <span class="number">0.</span>        ],</span><br><span class="line">         [ <span class="number">0.75069577</span>,  <span class="number">0.75069577</span>],</span><br><span class="line">[ <span class="number">0.58925384</span>, <span class="number">0.58925384</span>], dtype=float32)</span><br></pre></td></tr></table></figure>
+
+<p>这里没有什么惊喜，对吧？ 由于 ReLU 只能返回正值，因此它永远不会产生负值的点。</p>
+<blockquote>
+<p>等等，看起来好像不对。。。输出层在哪？</p>
+</blockquote>
+<p>好吧，被你发现了！ 我故意抑制输出层是为了在这里说明一点。 请耐心等待我向模型添加剩余连接：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">DummyResidual</span>(nn.Module):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">super</span>(DummyResidual, self).__init__()</span><br><span class="line">        self.linear = nn.Linear(<span class="number">1</span>, <span class="number">1</span>)</span><br><span class="line">        self.activation = nn.ReLU()</span><br><span class="line">        </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">        identity = x</span><br><span class="line">        out = self.linear(x)</span><br><span class="line">        out = self.activation(out)</span><br><span class="line">        out = out + identity</span><br><span class="line">        <span class="keyword">return</span> out</span><br></pre></td></tr></table></figure>
+
+<p>猜猜如果我们用 Dummy Residual 模型替换 Dummy 模型并重新训练会发生什么？</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">555</span>)</span><br><span class="line">dummy_model = DummyResidual()</span><br><span class="line">dummy_loss_fn = nn.MSELoss()</span><br><span class="line">dummy_optimizer = optim.SGD(dummy_model.parameters(), lr=<span class="number">0.1</span>)</span><br><span class="line">dummy_sbs = StepByStep(dummy_model, dummy_loss_fn, dummy_optimizer)</span><br><span class="line">dummy_sbs.set_loaders(dummy_loader)</span><br><span class="line">dummy_sbs.train(<span class="number">100</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">np.concatenate([dummy_points[:<span class="number">5</span>].numpy(), </span><br><span class="line">                dummy_sbs.predict(dummy_points)[:<span class="number">5</span>]], axis=<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">array([[-<span class="number">0.9012059</span> , -<span class="number">0.9012059</span> ],</span><br><span class="line">       [ <span class="number">0.56559485</span>,  <span class="number">0.56559485</span>],</span><br><span class="line">       [-<span class="number">0.48822638</span>, -<span class="number">0.48822638</span>],</span><br><span class="line">       [ <span class="number">0.75069577</span>,  <span class="number">0.75069577</span>],</span><br><span class="line">       [ <span class="number">0.58925384</span>,  <span class="number">0.58925384</span>]], dtype=float32)</span><br></pre></td></tr></table></figure>
+
+<p>看起来模型确实学会了恒等函数……或者真的学会了？ 我们来检查一下它的参数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_model.state_dict()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">OrderedDict([(<span class="string">&#x27;linear.weight&#x27;</span>, tensor([[<span class="number">0.1490</span>]], device=<span class="string">&#x27;cuda:0&#x27;</span>)),</span><br><span class="line">             (<span class="string">&#x27;linear.bias&#x27;</span>, tensor([-<span class="number">0.3329</span>], device=<span class="string">&#x27;cuda:0&#x27;</span>))])</span><br></pre></td></tr></table></figure>
+
+<p>对于等于 0 的输入值，线性层的输出将为 -0.3326，而该输出又将被 ReLU 激活截断。 现在我有一个问题要问你：</p>
+<blockquote>
+<p>“哪些输入值产生大于零的输出？”</p>
+</blockquote>
+<p>答案：输入值高于 2.2352 (&#x3D;0.3326&#x2F;0.1488) 将产生正输出，而该输出又将通过 ReLU 激活。 但我还有一个问题要问你：</p>
+<blockquote>
+<p>猜猜我们的数据集中的最高输入值是多少？</p>
+</blockquote>
+<p>足够接近！ 我假设您的答案是 2.2352，但它只是比这个少一点点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">dummy_points.<span class="built_in">max</span>()</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tensor(<span class="number">2.2347</span>)</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>所以呢？ 它真的意味着什么吗？</p>
+</blockquote>
+<p>这意味着模型学会了远离输入！ 现在模型能够直接使用原始输入，其线性层学会仅生成负值，因此其非线性 (ReLU) 仅生成零。 很酷，对吧？</p>
+<h3 id="捷径的力量"><a href="#捷径的力量" class="headerlink" title="捷径的力量"></a>捷径的力量</h3><blockquote>
+<p>残差连接作为一种捷径，使模型能够在有回报时跳过非线性（如果它产生较低的损失）。 因此，残差连接也称为跳跃连接。</p>
+</blockquote>
+<blockquote>
+<p>“我还是不相信……这有什么大不了的？”</p>
+</blockquote>
+<p>重要的是，这些捷径使损失表面更加平滑，因此梯度下降可以更轻松地找到最小值。 不要相信我的话——去看看 Li 等人制作的美丽的损失景观可视化。 在他们的论文“可视化神经网络的损失景观”中。</p>
+<p>太棒了，对吧？ 这些是 ResNet 模型的多维损失表面的投影，有或没有跳跃连接。 猜猜哪一个更容易训练？ :-)</p>
+<blockquote>
+<p>如果您想看到更多这样的景观，请务必查看他们的网站：“<a target="_blank" rel="noopener" href="https://www.cs.umd.edu/~tomg/projects/landscapes/">可视化神经网络的损失景观</a>”。</p>
+</blockquote>
+<p>这些捷径的另一个优点是它们为梯度返回到初始层提供了更短的路径，从而防止了梯度消失问题。</p>
+<h3 id="残差块"><a href="#残差块" class="headerlink" title="残差块"></a>残差块</h3><p>我们终于准备好处理 ResNet 模型（ILSVRC-2015 中表现最好的模型）的主要组件，即残差块。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F456a83c8-8bf1-40a2-92f4-70f7960a5326%2FUntitled.png?table=block&id=46addecc-1afe-4f02-9667-dd859b4c2004&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=650&userId=&cache=v2"></p>
+<p>残差块与我们自己的 DummyResidual 模型没有太大区别，除了残差块有两个连续的权重层和最后的 ReLU 激活这一事实之外。 而且，它可以具有两个以上的连续权重层，并且权重层不一定需要是线性的。</p>
+<p>对于图像分类，使用卷积层而不是线性层更有意义，对吧？ 正确的！ 为什么不加入一些批量归一化层呢？ 当然可以！ 残差块现在看起来像这样：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">ResidualBlock</span>(nn.Module):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, in_channels, out_channels, stride=<span class="number">1</span>, skip=<span class="literal">True</span></span>):</span><br><span class="line">        <span class="built_in">super</span>(ResidualBlock, self).__init__()</span><br><span class="line">        self.skip = skip</span><br><span class="line">        </span><br><span class="line">        self.conv1 = nn.Conv2d(</span><br><span class="line">            in_channels, out_channels, </span><br><span class="line">            kernel_size=<span class="number">3</span>, padding=<span class="number">1</span>, stride=stride, </span><br><span class="line">            bias=<span class="literal">False</span></span><br><span class="line">        )</span><br><span class="line">        self.bn1 = nn.BatchNorm2d(out_channels)</span><br><span class="line">        self.relu = nn.ReLU(inplace=<span class="literal">True</span>)</span><br><span class="line">        </span><br><span class="line">        self.conv2 = nn.Conv2d(</span><br><span class="line">            out_channels, out_channels, </span><br><span class="line">            kernel_size=<span class="number">3</span>, padding=<span class="number">1</span>, </span><br><span class="line">            bias=<span class="literal">False</span></span><br><span class="line">        )</span><br><span class="line">        self.bn2 = nn.BatchNorm2d(out_channels)</span><br><span class="line">        </span><br><span class="line">        self.downsample = <span class="literal">None</span></span><br><span class="line">        <span class="keyword">if</span> out_channels != in_channels:</span><br><span class="line">            self.downsample = nn.Conv2d(</span><br><span class="line">                in_channels, out_channels, </span><br><span class="line">                kernel_size=<span class="number">1</span>, stride=stride</span><br><span class="line">            )</span><br><span class="line">        </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">forward</span>(<span class="params">self, x</span>):</span><br><span class="line">        identity = x</span><br><span class="line">        out = self.conv1(x)</span><br><span class="line">        out = self.bn1(out)</span><br><span class="line">        out = self.relu(out)</span><br><span class="line">        </span><br><span class="line">        out = self.conv2(out)</span><br><span class="line">        out = self.bn2(out)</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> self.skip:</span><br><span class="line">            <span class="keyword">if</span> self.downsample <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">                identity = self.downsample(identity)</span><br><span class="line">            out += identity</span><br><span class="line">        </span><br><span class="line">        out = self.relu(out)</span><br><span class="line">        <span class="keyword">return</span> out</span><br></pre></td></tr></table></figure>
+
+<p>除了一个小细节之外，它应该非常清楚：可能需要对输入进行下采样。</p>
+<blockquote>
+<p>为什么要那样？</p>
+</blockquote>
+<p>要将两个图像相加，它们必须具有相同的尺寸 - 不仅是高度和宽度，而且还有通道数（相加与堆叠通道不同！）。 这给残差块带来了问题，因为最后一个卷积层的输出通道数可能与输入中的通道数不同。</p>
+<p>如果有一个操作接受原始输入并生成具有不同通道数的输出，知道为什么吗？</p>
+<blockquote>
+<p>卷积层如何？</p>
+</blockquote>
+<p>答对了！ 我们可以使用另一个卷积层来生成具有匹配通道数的输入（现已修改），以便可以将其添加到主输出中。</p>
+<blockquote>
+<p>但这样它就不再是原始输入了，不是吗？</p>
+</blockquote>
+<p>不是真的，不是，因为它会被下采样卷积层修改。 但是，尽管它在某种程度上违背了学习恒等函数的想法，但捷径的用处仍然存在。</p>
+<p>最后，为了说明跳跃连接对图像的影响，我将石头剪刀布数据集中的一张图像传递给随机初始化的残差块（进出三个通道，无下采样），以下显示了有和没有跳跃链接的不同。</p>
+<p><img src="https://wide-den-152.notion.site/image/https%3A%2F%2Fprod-files-secure.s3.us-west-2.amazonaws.com%2Fbb80691a-8fe1-432b-9ae3-61415c5cc03e%2F18125e9a-711a-448d-9430-d81c67b8b21e%2FUntitled.png?table=block&id=4d6a8093-1ef7-435e-8c89-64cba9eaa023&spaceId=bb80691a-8fe1-432b-9ae3-61415c5cc03e&width=1410&userId=&cache=v2"></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">scissors = Image.<span class="built_in">open</span>(<span class="string">&#x27;rps/scissors/scissors01-001.png&#x27;</span>)</span><br><span class="line">image = ToTensor()(scissors)[:<span class="number">3</span>, :, :].view(<span class="number">1</span>, <span class="number">3</span>, <span class="number">300</span>, <span class="number">300</span>)</span><br><span class="line">seed = <span class="number">14</span></span><br><span class="line">torch.manual_seed(seed)</span><br><span class="line">skip_image = ResidualBlock(<span class="number">3</span>, <span class="number">3</span>)(image)</span><br><span class="line">skip_image = ToPILImage()(skip_image[<span class="number">0</span>])</span><br><span class="line"></span><br><span class="line">torch.manual_seed(seed)</span><br><span class="line">noskip_image = ResidualBlock(<span class="number">3</span>, <span class="number">3</span>, skip=<span class="literal">False</span>)(image)</span><br><span class="line">noskip_image = ToPILImage()(noskip_image[<span class="number">0</span>])</span><br></pre></td></tr></table></figure>
+
+<p>一方面，如果没有跳跃连接，一些信息可能会丢失，比如手背上的不同深浅。 另一方面，跳过连接可能有助于保留该信息。</p>
+<p>这就是 ResNet 模型背后的总体思路。 当然，整个架构比这更复杂，涉及堆叠许多不同的残差块并添加更多的花哨的东西。 我们不会在这里讨论更多细节，但预训练的模型可以很容易地用于迁移学习，就像我们对 AlexNet 模型所做的那样。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>在本章中，我们完成了将迁移学习与预训练模型用于计算机视觉任务的必要步骤：使用 ImageNet 统计数据预处理输入、冻结层（或不冻结）、替换“顶层”层、 并可选择通过生成特征并独立训练模型的“顶部”来加速训练。</p>
+<p>数据准备</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># ImageNet statistics</span></span><br><span class="line">normalizer = Normalize(mean=[<span class="number">0.485</span>, <span class="number">0.456</span>, <span class="number">0.406</span>],</span><br><span class="line">                       std=[<span class="number">0.229</span>, <span class="number">0.224</span>, <span class="number">0.225</span>])</span><br><span class="line"></span><br><span class="line">composer = Compose([Resize(<span class="number">256</span>),</span><br><span class="line">                    CenterCrop(<span class="number">224</span>),</span><br><span class="line">                    ToTensor(),</span><br><span class="line">                    normalizer])</span><br><span class="line"></span><br><span class="line">train_data = ImageFolder(root=<span class="string">&#x27;rps&#x27;</span>, transform=composer)</span><br><span class="line">val_data = ImageFolder(root=<span class="string">&#x27;rps-test-set&#x27;</span>, transform=composer)</span><br><span class="line"></span><br><span class="line"><span class="comment"># Builds a loader of each set</span></span><br><span class="line">train_loader = DataLoader(train_data, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_loader = DataLoader(val_data, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<p>这次，我们将使用最小版本的 ResNet 模型 (resnet18)，并对其进行微调或仅将其用作特征提取器。</p>
+<h3 id="微调"><a href="#微调" class="headerlink" title="微调"></a>微调</h3><p>模型配置</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># repeating import from the top for reference</span></span><br><span class="line"><span class="keyword">from</span> torchvision.models.resnet <span class="keyword">import</span> ResNet18_Weights</span><br><span class="line"></span><br><span class="line"><span class="comment"># UPDATED</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line"><span class="comment"># This is the recommended way of loading a pretrained</span></span><br><span class="line"><span class="comment"># model&#x27;s weights</span></span><br><span class="line">model = resnet18(weights=ResNet18_Weights.DEFAULT)</span><br><span class="line"><span class="comment"># model = resnet18(pretrained=True)</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line"></span><br><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">model.fc = nn.Linear(<span class="number">512</span>, <span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<p>没有冻结，因为微调需要训练所有权重，而不仅仅是来自“顶层”的权重。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_model = optim.Adam(model.parameters(), lr=<span class="number">3e-4</span>)</span><br><span class="line">sbs_transfer = StepByStep(model, multi_loss_fn, optimizer_model)</span><br></pre></td></tr></table></figure>
+
+<p>模型训练</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sbs_transfer.set_loaders(train_loader, val_loader)</span><br><span class="line">sbs_transfer.train(<span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+
+<p>让我们看看模型在训练一个周期后可以完成什么：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader, sbs_transfer.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">          [<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">[<span class="number">124</span>, <span class="number">124</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>满分！如果我们冻结了上面模型中的层，那么这将是适合数据增强的特征提取的情况，因为我们将训练“顶部”层，而它仍然附加到模型的其余部分。</p>
+<h3 id="特制提取"><a href="#特制提取" class="headerlink" title="特制提取"></a>特制提取</h3><p>在下面的模型中，我们正在修改模型（用身份层替换“顶部”层）以首先生成特征数据集，然后使用它来独立训练真正的“顶部”层。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># repeating import from the top for reference</span></span><br><span class="line"><span class="keyword">from</span> torchvision.models.resnet <span class="keyword">import</span> ResNet18_Weights</span><br><span class="line"></span><br><span class="line">device = <span class="string">&#x27;cuda&#x27;</span> <span class="keyword">if</span> torch.cuda.is_available() <span class="keyword">else</span> <span class="string">&#x27;cpu&#x27;</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># UPDATED</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line">model = resnet18(weights=ResNet18_Weights.DEFAULT).to(device)</span><br><span class="line"><span class="comment"># model = resnet18(pretrained=True).to(device)</span></span><br><span class="line"><span class="comment">###########################################################</span></span><br><span class="line"></span><br><span class="line">model.fc = nn.Identity()</span><br><span class="line">freeze_model(model)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">train_preproc = preprocessed_dataset(model, train_loader)</span><br><span class="line">val_preproc = preprocessed_dataset(model, val_loader)</span><br><span class="line">train_preproc_loader = DataLoader(train_preproc, batch_size=<span class="number">16</span>, shuffle=<span class="literal">True</span>)</span><br><span class="line">val_preproc_loader = DataLoader(val_preproc, batch_size=<span class="number">16</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">torch.manual_seed(<span class="number">42</span>)</span><br><span class="line">top_model = nn.Sequential(nn.Linear(<span class="number">512</span>, <span class="number">3</span>))</span><br><span class="line">multi_loss_fn = nn.CrossEntropyLoss(reduction=<span class="string">&#x27;mean&#x27;</span>)</span><br><span class="line">optimizer_top = optim.Adam(top_model.parameters(), lr=<span class="number">3e-4</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sbs_top = StepByStep(top_model, multi_loss_fn, optimizer_top)</span><br><span class="line">sbs_top.set_loaders(train_preproc_loader, val_preproc_loader)</span><br><span class="line">sbs_top.train(<span class="number">10</span>)</span><br></pre></td></tr></table></figure>
+
+<p>我们现在当然可以评估模型，因为它使用相同的数据加载器（包含预处理的特征）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_preproc_loader, sbs_top.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[ <span class="number">98</span>, <span class="number">124</span>],</span><br><span class="line">          [<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">[<span class="number">104</span>, <span class="number">124</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>但是，如果我们想在原始数据集（包含图像）上尝试，我们需要重新附加“顶层”：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">model.fc = top_model</span><br><span class="line">sbs_temp = StepByStep(model, <span class="literal">None</span>, <span class="literal">None</span>)</span><br></pre></td></tr></table></figure>
+
+<p>我们仍然可以为完整模型创建一个单独的 StepByStep 实例，以便能够调用其 Predict() 或 Correct() 方法（在这种情况下，损失函数和优化器都设置为 None，因为我们不会进行训练模型）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">StepByStep.loader_apply(val_loader, sbs_temp.correct)</span><br></pre></td></tr></table></figure>
+
+<p>输出结果</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tensor([[ <span class="number">98</span>, <span class="number">124</span>],</span><br><span class="line">          [<span class="number">124</span>, <span class="number">124</span>],</span><br><span class="line">[<span class="number">104</span>, <span class="number">124</span>]])</span><br></pre></td></tr></table></figure>
+
+<p>正如预期的那样，我们得到了相同的结果。</p>
+<h2 id="回顾"><a href="#回顾" class="headerlink" title="回顾"></a>回顾</h2><p>在本章中，我们了解了 ImageNet 大规模视觉识别挑战赛 (ILSVRC) 以及为解决该挑战而开发的许多模型架构（AlexNet、VGG、Inception 和 ResNet）。 我们使用他们预先训练的权重来执行迁移学习，并为我们自己的分类任务微调或提取特征。 此外，我们还快速浏览了这些模型中内置的许多架构元素的内部工作原理。 这就是我们所涵盖的内容：</p>
+<ul>
+<li>了解迁移学习</li>
+<li>了解 ImageNet、ILSVRC 和最流行的架构<br>为解决这个问题而开发</li>
+<li>比较这些架构的大小、速度和性能</li>
+<li>加载AlexNet 模型</li>
+<li>加载模型的预训练权重冻结模型的各层</li>
+<li>替换模型的“顶层”</li>
+<li>了解微调和特征提取之间的区别</li>
+<li>使用ImageNet 统计数据预处理图像</li>
+<li>使用冻结模型生成特征数据集</li>
+<li>训练独立模型并将其附加到原始模型</li>
+<li>了解辅助分类器在非常深的架构中的作用</li>
+<li>构建一个也可以处理辅助分类器的损失函数</li>
+<li>训练 Inception V3 模型的“顶层”</li>
+<li>使用 1x1 卷积作为降维层</li>
+<li>构建 Inception 模块</li>
+<li>了解批量归一化层的作用</li>
+<li>讨论在激活函数之前或之后放置批量归一化层的位置</li>
+<li>了解小批量大小对批量标准化统计数据的影响</li>
+<li>了解批量归一化的正则化效果</li>
+<li>观察批量归一化层中训练和评估模式的效果</li>
+<li>了解什么是残差&#x2F;跳过连接</li>
+<li>了解跳跃连接对损失表面的影响</li>
+<li>构建残差块</li>
+<li>使用 ResNet18 模型微调和提取特征</li>
+</ul>
+<p>恭喜！ 您刚刚完成了第二部分的第四章，也是最后一章（不包括“额外”章节）！ 您现在已经熟悉了处理计算机视觉问题的最重要的工具和技术。 尽管总是有很多东西需要学习，但由于该领域非常活跃并且新技术正在不断开发，我相信充分掌握这些构建块的工作原理将使您更容易进一步探索和继续学习。</p>
+<p>在下一部分中，我们将把重点转向序列和一类全新的模型：循环神经网络及其变体。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/AlexNet/" rel="tag">AlexNet</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Inception/" rel="tag">Inception</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ResNet/" rel="tag">ResNet</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E6%AE%8B%E5%B7%AE%E7%BD%91%E7%BB%9C/" rel="tag">残差网络</a></li></ul></div><div class="post-nav"><a class="next" href="/2024/03/04/Ai%E5%9B%BE%E5%83%8F%E8%AF%86%E5%88%AB%E4%B9%8B-%E5%89%AA%E5%88%80%E7%9F%B3%E5%A4%B4%E5%B8%83/">Ai图像识别之--剪刀石头布</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.baidu.com/baidu" method="get" accept-charset="utf-8" target="_blank"><input type="search" name="word" maxlength="20" placeholder="Search"/><input type="hidden" name="si" value="https://bsneric.github.io"/><input name="tn" type="hidden" value="bds"/><input name="cl" type="hidden" value="3"/><input name="ct" type="hidden" value="2097152"/><input name="s" type="hidden" value="on"/></form></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar-wechat.png"/></a><p>知之而不行，虽敦必困。</p><a class="info-icon" href="mailto:yeseric@163.com" title="Email" target="_blank" style="margin-inline:5px"> <i class="fa fa-envelope-square" style="margin-inline:5px"></i></a><a class="info-icon" href="https://github.com/bsneric" title="Github" target="_blank" style="margin-inline:5px"> <i class="fa fa-github-square" style="margin-inline:5px"></i></a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%A7%E5%93%81%E7%AE%A1%E7%90%86/">产品管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD/">人工智能</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E9%9A%8F%E6%83%B3/">随想</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E8%B5%84%E6%BA%90%E7%AE%A1%E7%90%86/" style="font-size: 15px;">资源管理</a> <a href="/tags/%E7%89%88%E6%9C%AC%E7%AE%A1%E7%90%86/" style="font-size: 15px;">版本管理</a> <a href="/tags/%E6%97%85%E6%B8%B8/" style="font-size: 15px;">旅游</a> <a href="/tags/%E6%96%87%E6%A1%A3%E7%AE%A1%E7%90%86/" style="font-size: 15px;">文档管理</a> <a href="/tags/%E5%8E%9F%E5%88%99/" style="font-size: 15px;">原则</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" style="font-size: 15px;">深度学习</a> <a href="/tags/PyTorch/" style="font-size: 15px;">PyTorch</a> <a href="/tags/BERT/" style="font-size: 15px;">BERT</a> <a href="/tags/GPT/" style="font-size: 15px;">GPT</a> <a href="/tags/HuggingFace/" style="font-size: 15px;">HuggingFace</a> <a href="/tags/Anaconda/" style="font-size: 15px;">Anaconda</a> <a href="/tags/%E6%A2%AF%E5%BA%A6%E4%B8%8B%E9%99%8D/" style="font-size: 15px;">梯度下降</a> <a href="/tags/%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92/" style="font-size: 15px;">线性回归</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/FATE/" style="font-size: 15px;">FATE</a> <a href="/tags/%E4%BC%98%E5%8C%96%E5%99%A8/" style="font-size: 15px;">优化器</a> <a href="/tags/%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0/" style="font-size: 15px;">损失函数</a> <a href="/tags/sigmoid/" style="font-size: 15px;">sigmoid</a> <a href="/tags/MSELoss/" style="font-size: 15px;">MSELoss</a> <a href="/tags/Linear/" style="font-size: 15px;">Linear</a> <a href="/tags/Sequential/" style="font-size: 15px;">Sequential</a> <a href="/tags/TensorBoard/" style="font-size: 15px;">TensorBoard</a> <a href="/tags/matplotlib/" style="font-size: 15px;">matplotlib</a> <a href="/tags/Logits/" style="font-size: 15px;">Logits</a> <a href="/tags/Scikit-Learn/" style="font-size: 15px;">Scikit-Learn</a> <a href="/tags/BCELoss/" style="font-size: 15px;">BCELoss</a> <a href="/tags/Scikit/" style="font-size: 15px;">Scikit</a> <a href="/tags/Sigmod/" style="font-size: 15px;">Sigmod</a> <a href="/tags/ReLU/" style="font-size: 15px;">ReLU</a> <a href="/tags/Leaky-ReLU/" style="font-size: 15px;">Leaky ReLU</a> <a href="/tags/TanH/" style="font-size: 15px;">TanH</a> <a href="/tags/PreReLU/" style="font-size: 15px;">PreReLU</a> <a href="/tags/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0/" style="font-size: 15px;">激活函数</a> <a href="/tags/%E6%B7%B1%E5%BA%A6%E6%A8%A1%E5%9E%8B/" style="font-size: 15px;">深度模型</a> <a href="/tags/softmax/" style="font-size: 15px;">softmax</a> <a href="/tags/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">卷积神经网络</a> <a href="/tags/Adam/" style="font-size: 15px;">Adam</a> <a href="/tags/CNN/" style="font-size: 15px;">CNN</a> <a href="/tags/ResNet/" style="font-size: 15px;">ResNet</a> <a href="/tags/AlexNet/" style="font-size: 15px;">AlexNet</a> <a href="/tags/Inception/" style="font-size: 15px;">Inception</a> <a href="/tags/%E6%AE%8B%E5%B7%AE%E7%BD%91%E7%BB%9C/" style="font-size: 15px;">残差网络</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2024/03/08/%E8%BF%81%E7%A7%BB%E5%AD%A6%E4%B9%A0/">迁移学习</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/03/04/Ai%E5%9B%BE%E5%83%8F%E8%AF%86%E5%88%AB%E4%B9%8B-%E5%89%AA%E5%88%80%E7%9F%B3%E5%A4%B4%E5%B8%83/">Ai图像识别之--剪刀石头布</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/26/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/">卷积神经网络</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/23/%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E5%AF%B9%E7%89%B9%E5%BE%81%E7%A9%BA%E9%97%B4%E7%9A%84%E5%BD%B1%E5%93%8D/">激活函数对特征空间的影响</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/21/%E4%BD%BF%E7%94%A8AI%E8%BF%9B%E8%A1%8C%E5%9B%BE%E5%83%8F%E5%88%86%E7%B1%BB/">使用AI进行图像分类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/02/07/%E7%94%A8AI%E6%A8%A1%E5%9E%8B%E5%A4%84%E7%90%86%E5%88%86%E7%B1%BB%E9%97%AE%E9%A2%98/">用AI模型处理分类问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E5%AE%9E%E7%8E%B0%E8%AE%AD%E7%BB%83%E6%A8%A1%E5%9E%8B%E7%B1%BB/">实现训练模型类</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/31/%E9%87%8D%E6%96%B0%E6%80%9D%E8%80%83%E8%AE%AD%E7%BB%83%E5%BE%AA%E7%8E%AF/">重新思考训练循环</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/26/%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E7%BA%BF%E6%80%A7%E5%9B%9E%E5%BD%92%E9%97%AE%E9%A2%98/">一个简单的线性回归问题</a></li><li class="post-list-item"><a class="post-list-link" href="/2024/01/18/Fate%E7%9A%84%E5%8D%95%E6%9C%BA%E9%83%A8%E7%BD%B2/">Fate的单机部署</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.bsnbase.com/" title="BSN" target="_blank">BSN</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2024 <a href="/." rel="nofollow">享乐跑步机.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.js"></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0"></script><link rel="stylesheet" type="text/css" href="//lib.baomitu.com/fancybox/latest/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+  });
+</script><script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML" async></script><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
