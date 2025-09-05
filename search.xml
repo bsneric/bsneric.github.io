@@ -4,6 +4,31 @@
   
     
     <entry>
+      <title>数据库关系代数中的有损分解与无损分解：概念、区别及示例</title>
+      <link href="/2025/09/05/15-%E6%95%B0%E6%8D%AE%E5%BA%93%E5%85%B3%E7%B3%BB%E4%BB%A3%E6%95%B0%E4%B8%AD%E7%9A%84%E6%9C%89%E6%8D%9F%E5%88%86%E8%A7%A3%E4%B8%8E%E6%97%A0%E6%8D%9F%E5%88%86%E8%A7%A3%EF%BC%9A%E6%A6%82%E5%BF%B5%E3%80%81%E5%8C%BA%E5%88%AB%E5%8F%8A%E7%A4%BA%E4%BE%8B/"/>
+      <url>/2025/09/05/15-%E6%95%B0%E6%8D%AE%E5%BA%93%E5%85%B3%E7%B3%BB%E4%BB%A3%E6%95%B0%E4%B8%AD%E7%9A%84%E6%9C%89%E6%8D%9F%E5%88%86%E8%A7%A3%E4%B8%8E%E6%97%A0%E6%8D%9F%E5%88%86%E8%A7%A3%EF%BC%9A%E6%A6%82%E5%BF%B5%E3%80%81%E5%8C%BA%E5%88%AB%E5%8F%8A%E7%A4%BA%E4%BE%8B/</url>
+      
+        <content type="html"><![CDATA[<p>在数据库设计中，当我们对一个关系模式进行分解时，有损分解和无损分解是两个重要的概念，它们对于保持数据的完整性和一致性起着关键作用。</p><h2 id="有损分解"><a href="#有损分解" class="headerlink" title="有损分解"></a>有损分解</h2><h3 id="概念"><a href="#概念" class="headerlink" title="概念"></a>概念</h3><p>有损分解指的是在将一个关系模式 (R) 分解为多个关系模式 (R1, R2, \cdots, Rn) 的过程中，通过对这些分解后的关系进行自然连接（这是关系代数中一种常用的连接操作，它基于两个关系中相同属性名的属性值相等进行连接），无法还原出原始关系 (R) 的所有信息。也就是说，分解后会丢失部分数据信息，这种分解会损害数据的完整性。</p><h3 id="示例"><a href="#示例" class="headerlink" title="示例"></a>示例</h3><p>假设有一个关系模式 <code>StudentCourse</code>，包含属性 <code>学号(SID)</code>、<code>学生姓名(SName)</code>、<code>课程号(CID)</code> 和 <code>课程名称(CName)</code>，即 <code>StudentCourse(SID, SName, CID, CName)</code>。假设存在数据如下：</p><table><thead><tr><th>SID</th><th>SName</th><th>CID</th><th>CName</th></tr></thead><tbody><tr><td>1</td><td>张三</td><td>C001</td><td>数学</td></tr><tr><td>1</td><td>张三</td><td>C002</td><td>语文</td></tr><tr><td>2</td><td>李四</td><td>C001</td><td>数学</td></tr></tbody></table><p>现在将其分解为两个关系模式：</p><ul><li><code>Student(SID, SName)</code></li><li><code>Course(CID, CName)</code></li></ul><p>分解后的 <code>Student</code> 关系：</p><table><thead><tr><th>SID</th><th>SName</th></tr></thead><tbody><tr><td>1</td><td>张三</td></tr><tr><td>2</td><td>李四</td></tr></tbody></table><p>分解后的 <code>Course</code> 关系：</p><table><thead><tr><th>CID</th><th>CName</th></tr></thead><tbody><tr><td>C001</td><td>数学</td></tr><tr><td>C002</td><td>语文</td></tr></tbody></table><p>当我们对 <code>Student</code> 和 <code>Course</code> 进行自然连接时，会得到：</p><table><thead><tr><th>SID</th><th>SName</th><th>CID</th><th>CName</th></tr></thead><tbody><tr><td>1</td><td>张三</td><td>C001</td><td>数学</td></tr><tr><td>1</td><td>张三</td><td>C002</td><td>语文</td></tr><tr><td>2</td><td>李四</td><td>C001</td><td>数学</td></tr><tr><td>2</td><td>李四</td><td>C002</td><td>语文</td></tr></tbody></table><p>可以看到，新得到的关系中多了“2 | 李四 | C002 | 语文”这条在原始关系中不存在的数据，并且无法准确还原出原始关系中每个学生具体选修了哪些课程，这就是有损分解，丢失了学生与课程之间准确的对应信息。</p><h2 id="无损分解"><a href="#无损分解" class="headerlink" title="无损分解"></a>无损分解</h2><h3 id="概念-1"><a href="#概念-1" class="headerlink" title="概念"></a>概念</h3><p>无损分解是指将一个关系模式 (R) 分解为多个关系模式 (R1, R2, \cdots, Rn) 后，通过对这些分解后的关系进行自然连接，能够精确地还原出原始关系 (R)，不会丢失任何信息。这种分解保证了数据的完整性，是数据库设计中较为理想的分解方式。</p><h3 id="示例-1"><a href="#示例-1" class="headerlink" title="示例"></a>示例</h3><p>还是以刚才的 <code>StudentCourse(SID, SName, CID, CName)</code> 关系模式为例，这次进行无损分解。</p><p>将其分解为以下三个关系模式：</p><ul><li><code>Student(SID, SName)</code></li><li><code>Course(CID, CName)</code></li><li><code>Enrollment(SID, CID)</code></li></ul><p>分解后的 <code>Student</code> 关系：</p><table><thead><tr><th>SID</th><th>SName</th></tr></thead><tbody><tr><td>1</td><td>张三</td></tr><tr><td>2</td><td>李四</td></tr></tbody></table><p>分解后的 <code>Course</code> 关系：</p><table><thead><tr><th>CID</th><th>CName</th></tr></thead><tbody><tr><td>C001</td><td>数学</td></tr><tr><td>C002</td><td>语文</td></tr></tbody></table><p>分解后的 <code>Enrollment</code> 关系：</p><table><thead><tr><th>SID</th><th>CID</th></tr></thead><tbody><tr><td>1</td><td>C001</td></tr><tr><td>1</td><td>C002</td></tr><tr><td>2</td><td>C001</td></tr></tbody></table><p>当对这三个关系进行自然连接时：</p><ul><li>首先 <code>Student</code> 和 <code>Enrollment</code> 进行自然连接，基于 <code>SID</code> 属性连接得到中间结果：</li></ul><table><thead><tr><th>SID</th><th>SName</th><th>CID</th></tr></thead><tbody><tr><td>1</td><td>张三</td><td>C001</td></tr><tr><td>1</td><td>张三</td><td>C002</td></tr><tr><td>2</td><td>李四</td><td>C001</td></tr></tbody></table><ul><li>然后这个中间结果再与 <code>Course</code> 进行自然连接，基于 <code>CID</code> 属性连接，最终得到：</li></ul><table><thead><tr><th>SID</th><th>SName</th><th>CID</th><th>CName</th></tr></thead><tbody><tr><td>1</td><td>张三</td><td>C001</td><td>数学</td></tr><tr><td>1</td><td>张三</td><td>C002</td><td>语文</td></tr><tr><td>2</td><td>李四</td><td>C001</td><td>数学</td></tr></tbody></table><p>可以看到，通过自然连接精确还原了原始的 <code>StudentCourse</code> 关系，没有丢失任何信息，这就是无损分解。</p><h2 id="区别总结"><a href="#区别总结" class="headerlink" title="区别总结"></a>区别总结</h2><ul><li><strong>数据还原</strong>：有损分解无法通过自然连接还原原始关系的所有信息，而无损分解能够精确还原。</li><li><strong>数据完整性</strong>：有损分解会破坏数据的完整性，导致信息丢失；无损分解则能保证数据完整性不受损害。</li><li><strong>设计影响</strong>：在数据库设计中，无损分解通常是我们追求的目标，因为它能确保在对关系模式进行分解以优化数据库结构时，数据的准确性和一致性不受影响。而有损分解一般应尽量避免，因为它可能会给数据处理和应用带来错误和不便。</li></ul><p>理解有损分解和无损分解的概念及区别，对于数据库设计师在进行关系模式分解时做出正确决策至关重要，有助于设计出高效且数据准确的数据库系统。 </p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 设计 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> 数据库 </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>一文搞懂数据库设计范式：1NF、2NF、3NF 和 BCNF</title>
       <link href="/2025/09/05/14-%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E6%95%B0%E6%8D%AE%E5%BA%93%E8%AE%BE%E8%AE%A1%E8%8C%83%E5%BC%8F%EF%BC%9A1NF%E3%80%812NF%E3%80%813NF-%E5%92%8C-BCNF/"/>
       <url>/2025/09/05/14-%E4%B8%80%E6%96%87%E6%90%9E%E6%87%82%E6%95%B0%E6%8D%AE%E5%BA%93%E8%AE%BE%E8%AE%A1%E8%8C%83%E5%BC%8F%EF%BC%9A1NF%E3%80%812NF%E3%80%813NF-%E5%92%8C-BCNF/</url>
