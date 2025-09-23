@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>28 ReLU_函数的定义和作用</title>
+      <link href="/2025/09/23/28-ReLU-%E5%87%BD%E6%95%B0%E7%9A%84%E5%AE%9A%E4%B9%89%E5%92%8C%E4%BD%9C%E7%94%A8/"/>
+      <url>/2025/09/23/28-ReLU-%E5%87%BD%E6%95%B0%E7%9A%84%E5%AE%9A%E4%B9%89%E5%92%8C%E4%BD%9C%E7%94%A8/</url>
+      
+        <content type="html"><![CDATA[<p>ReLU（Rectified Linear Unit，修正线性单元）是深度学习中常用的一种激活函数。它的定义非常简单：</p><p>$$<br>\begin{align*}<br>\sigma(z)&#x3D;\begin{cases}<br>z,\ if \ z&gt;0 \<br>0,\ if \ z&lt;0<br>\end{cases} \<br>或者 \</p><p>\sigma(z)&#x3D;max(0,z)</p><p>\end{align*}<br>$$<br>也就是说，ReLU 函数会将输入中的负值全部置为0，而正值保持不变。</p><p>ReLU 函数的图像如下：</p><p><img src="https://raw.githubusercontent.com/bsneric/note-gen-image-sync/main/20250923092011433.png" alt="ReLU函数"></p><p>ReLU 函数的优点包括：</p><ol><li><strong>计算简单</strong>：ReLU 函数的计算非常简单，只需要比较输入值和0的大小。</li><li><strong>梯度消失问题</strong>：相比于 sigmoid 和 tanh 激活函数，ReLU 函数在正区间的梯度恒为1，能够有效缓解梯度消失问题。</li><li><strong>稀疏激活</strong>：ReLU 函数会将一部分神经元的输出置为0，从而引入了稀疏性，有助于模型的泛化能力。</li></ol><p>在 PyTorch 中，可以使用 <code>torch.nn.ReLU</code> 或 <code>torch.relu</code> 来应用 ReLU 激活函数。例如：</p><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.nn <span class="keyword">as</span> nn</span><br><span class="line"></span><br><span class="line"><span class="comment"># 使用 nn.ReLU</span></span><br><span class="line">relu = nn.ReLU()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 假设输入张量 x</span></span><br><span class="line">x = torch.tensor([-<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>, <span class="number">2.0</span>])</span><br><span class="line"></span><br><span class="line"><span class="comment"># 应用 ReLU 激活函数</span></span><br><span class="line">y = relu(x)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;输入张量 x:&quot;</span>, x)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;输出张量 y:&quot;</span>, y)</span><br></pre></td></tr></table></figure><p>输出结果如下：</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">输入张量 x: tensor([-1., 0., 1., 2.]) </span><br><span class="line">输出张量 y: tensor([0., 0., 1., 2.])</span><br></pre></td></tr></table></figure><p>在这个例子中，输入张量 <code>x</code> 中的负值被置为0，正值保持不变。</p><p>使用 ReLU 的好处是它的梯度要么是 1（对于正值），要么是 0（对于负值）——不再有梯度消失！</p><p>这种模式导致网络更快的收敛。 然而，这种行为也可能导致所谓的“神经元死亡”； 也就是说，输入始终为负的神经元，因此激活值始终为零。 更糟糕的是，负输入的梯度也为零，这意味着权重不会更新。 就像神经元被卡住了一样。</p><p>ReLU 的激活值显然不是以零为中心。 它会比双曲正切更糟糕吗？ 当然不是，否则它不会成为从业者中如此流行的激活函数。 尽管 ReLU 的输出不以零为中心，但其梯度相对较大，能够比其他两个激活函数获得更好更快的结果。</p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 技术 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> AI </tag>
+            
+            <tag> 算法 </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>深度学习中几种激活函数介绍</title>
       <link href="/2025/09/23/27-%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E4%B8%AD%E5%87%A0%E7%A7%8D%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E4%BB%8B%E7%BB%8D/"/>
       <url>/2025/09/23/27-%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E4%B8%AD%E5%87%A0%E7%A7%8D%E6%BF%80%E6%B4%BB%E5%87%BD%E6%95%B0%E4%BB%8B%E7%BB%8D/</url>
