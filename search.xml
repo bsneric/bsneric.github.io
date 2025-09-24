@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>设计模式--单例模式</title>
+      <link href="/2025/09/24/29-%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F-%E5%8D%95%E4%BE%8B%E6%A8%A1%E5%BC%8F/"/>
+      <url>/2025/09/24/29-%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F-%E5%8D%95%E4%BE%8B%E6%A8%A1%E5%BC%8F/</url>
+      
+        <content type="html"><![CDATA[<blockquote><p>介绍设计模式的文章其实很多了，今天开始我打算把23个设计模式用自己的方式重新梳理一遍。以下是最简单也是比较常用的单例模式。</p></blockquote><p>单例模式的定义是：<strong>确保一个类，只有一个实例，并提供一个访问它的全局访问点。</strong></p><p>我们来用一个UML图示表示它，如下：</p><p><img src="https://raw.githubusercontent.com/bsneric/note-gen-image-sync/main/20250924115318082.png" alt="image.png"></p><p>这个单例模式在我们日常的编程中应用还是比较多的。比如，我们在做各类基于数据库的这种信息系统时，要不停的访问数据库存取数据，意味着要频繁的建立数据库连接，但是数据库的连接资源是有限的，通常我们会创建一个连接池来进行管理。这个时候就需要通过单例模式来统一管理连接的创建、分配和回收。此外，像程序中的日志操作，也通常是需要通过单例模式来确保单一实例来操作日志文件，避免出现多实例同时写入造成的冲突。</p><p>单例模式的实现也比较简单，下面是一个Java示例代码：</p><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Singleton</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Singleton instance;</span><br><span class="line">    <span class="keyword">private</span> <span class="title function_">Singleton</span><span class="params">()</span> &#123;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> Singleton <span class="title function_">getInstance</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (instance == <span class="literal">null</span>) &#123;</span><br><span class="line">            instance = <span class="keyword">new</span> <span class="title class_">Singleton</span>();</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> instance;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">businessMethod</span><span class="params">()</span> &#123;</span><br><span class="line">        System.out.println(<span class="string">&quot;Singleton 业务方法被调用&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>代码中我们通过<code>getInstance</code>方法来获得Singleton这个类的实例，并且把它声明为<code>static</code>这样就可以直接通过类静态方法调用。因为这里我们判定了instantce是否已经存在，如果存在就直接返回，如果不存在才会创建，因此实例永远是单一的，不会被重复创建。</p><p>下面是一个调用代码的例子：</p><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Client</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        <span class="type">Singleton</span> <span class="variable">instance</span> <span class="operator">=</span> Singleton.getInstance();</span><br><span class="line">        instance.businessMethod();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>]]></content>
+      
+      
+      <categories>
+          
+          <category> 设计 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> 设计模式 </tag>
+            
+            <tag> 编程 </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>ReLU_函数的定义和作用</title>
       <link href="/2025/09/23/28-ReLU-%E5%87%BD%E6%95%B0%E7%9A%84%E5%AE%9A%E4%B9%89%E5%92%8C%E4%BD%9C%E7%94%A8/"/>
       <url>/2025/09/23/28-ReLU-%E5%87%BD%E6%95%B0%E7%9A%84%E5%AE%9A%E4%B9%89%E5%92%8C%E4%BD%9C%E7%94%A8/</url>
