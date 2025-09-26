@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>Windows10 最长路径字符限制导致Python依赖安装异常的解决办法</title>
+      <link href="/2025/09/26/51-Windows10-%E6%9C%80%E9%95%BF%E8%B7%AF%E5%BE%84%E5%AD%97%E7%AC%A6%E9%99%90%E5%88%B6%E5%AF%BC%E8%87%B4Python%E4%BE%9D%E8%B5%96%E5%AE%89%E8%A3%85%E5%BC%82%E5%B8%B8%E7%9A%84%E8%A7%A3%E5%86%B3%E5%8A%9E%E6%B3%95/"/>
+      <url>/2025/09/26/51-Windows10-%E6%9C%80%E9%95%BF%E8%B7%AF%E5%BE%84%E5%AD%97%E7%AC%A6%E9%99%90%E5%88%B6%E5%AF%BC%E8%87%B4Python%E4%BE%9D%E8%B5%96%E5%AE%89%E8%A3%85%E5%BC%82%E5%B8%B8%E7%9A%84%E8%A7%A3%E5%86%B3%E5%8A%9E%E6%B3%95/</url>
+      
+        <content type="html"><![CDATA[<p>今天在开发程序，在安装Python的一个依赖时出现了下面的异常：</p><figure class="highlight cmd"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">ERROR: <span class="title">Could</span> <span class="title">not</span> <span class="title">install</span> <span class="title">packages</span> <span class="title">due</span> <span class="title">to</span> <span class="title">an</span> <span class="title">OSError</span>: [<span class="title">Errno</span> 2] <span class="title">No</span> <span class="title">such</span> <span class="title">file</span> <span class="title">or</span> <span class="title">directory</span>:</span></span><br><span class="line"><span class="function"></span></span><br><span class="line"><span class="function"><span class="title">HINT</span>: <span class="title">This</span> <span class="title">error</span> <span class="title">might</span> <span class="title">have</span> <span class="title">occurred</span> <span class="title">since</span> <span class="title">this</span> <span class="title">system</span> <span class="title">does</span> <span class="title">not</span> <span class="title">have</span> <span class="title">Windows</span> <span class="title">Long</span> <span class="title">Path</span> <span class="title">support</span> <span class="title">enabled</span>. <span class="title">You</span> <span class="title">can</span> <span class="title">find</span> <span class="title">information</span> <span class="title">on</span> <span class="title">how</span> <span class="title">to</span> <span class="title">enable</span> <span class="title">this</span> <span class="title">at</span> <span class="title">https</span>://<span class="title">pip.pypa.io</span>/<span class="title">warnings</span>/<span class="title">enable</span>-<span class="title">long</span>-<span class="title">paths</span></span></span><br></pre></td></tr></table></figure><p>从提示中可以看出，这是由于Windows最长路径限制造成的。因为我写的这个程序的目录特别长，而Window10默认对路径的最长限制是260个字符。</p><p>修改的方式我们只要参考这里即可：<a href="https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry#enable-long-paths-in-windows-10-version-1607-and-later">Maximum Path Length Limitation - Win32 apps | Microsoft Learn</a></p><p>文章一开头就告诉我们：</p><blockquote><p>In the Windows API (with some exceptions discussed in the following paragraphs), the maximum length for a path is <strong>MAX_PATH</strong>, which is defined as 260 characters. A local path is structured in the following order: drive letter, colon, backslash, name components separated by backslashes, and a terminating null character. For example, the maximum path on drive D is “D:_some 256-character path string_<code>&lt;NUL&gt;</code>“ where “<code>&lt;NUL&gt;</code>“ represents the invisible terminating null character for the current system codepage. (The characters <code>&lt; &gt;</code> are used here for visual clarity and cannot be part of a valid path string.)</p></blockquote><p>翻译过来就是</p><blockquote><p>[!note]<br>在Windows API中（下文段落会讨论一些例外情况），路径的最大长度为MAX_PATH，其定义为260个字符。本地路径的结构顺序如下：驱动器号、冒号、反斜杠、由反斜杠分隔的名称组件，以及一个终止空字符。例如，D盘上的最大路径为“D:\some 256-character path string<code>&lt;NUL&gt;</code>”，其中“<code>&lt;NUL&gt;</code>”代表当前系统代码页中不可见的终止空字符。（此处使用<code>&lt; &gt;</code>是为了视觉上的清晰，它们不能成为有效路径字符串的一部分。）</p></blockquote><p>解决的办法文中也告诉我们了，只要用Windows管理员权限打开Powershell，然后输入下面的命令即可</p><figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">New-ItemProperty</span> <span class="literal">-Path</span> <span class="string">&quot;HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem&quot;</span> <span class="literal">-Name</span> <span class="string">&quot;LongPathsEnabled&quot;</span> <span class="literal">-Value</span> <span class="number">1</span> <span class="literal">-PropertyType</span> DWORD <span class="literal">-Force</span></span><br></pre></td></tr></table></figure>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> python </tag>
+            
+            <tag> pip </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>设计模式22 -- 解释器模式</title>
       <link href="/2025/09/26/50-%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F22-%E8%A7%A3%E9%87%8A%E5%99%A8%E6%A8%A1%E5%BC%8F/"/>
       <url>/2025/09/26/50-%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F22-%E8%A7%A3%E9%87%8A%E5%99%A8%E6%A8%A1%E5%BC%8F/</url>
