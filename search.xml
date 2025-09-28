@@ -4,6 +4,31 @@
   
     
     <entry>
+      <title>使用智谱CogTTS将文本转换为语音</title>
+      <link href="/2025/09/26/52-%E4%BD%BF%E7%94%A8%E6%99%BA%E8%B0%B1CogTTS%E5%B0%86%E6%96%87%E6%9C%AC%E8%BD%AC%E6%8D%A2%E4%B8%BA%E8%AF%AD%E9%9F%B3/"/>
+      <url>/2025/09/26/52-%E4%BD%BF%E7%94%A8%E6%99%BA%E8%B0%B1CogTTS%E5%B0%86%E6%96%87%E6%9C%AC%E8%BD%AC%E6%8D%A2%E4%B8%BA%E8%AF%AD%E9%9F%B3/</url>
+      
+        <content type="html"><![CDATA[<p>文本转语音这类技术已经有很多了，自从大模型出现后在转换速度和转换后的还原度上有了很大的突破。今天这个示例是基于智谱AI的CogTTS来实现的文本转语音的例子。</p><p>在这个例子中，我们的需求如下：</p><ul><li>在一个名为speech.txt文本中保存了要转换的语音</li><li>通过CogTTS将speech.txt中的文本转换为语音</li><li>将转换后的语音保存到.&#x2F;audo&#x2F;speech.wav文件中</li></ul><p>要完成这些工作，我们首先需要安装依赖。在这之前我们在当前目录下创建一个Python的虚拟环境</p><figure class="highlight cmd"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">python -m venv .venv</span><br><span class="line">./venv/Scripts/activate</span><br></pre></td></tr></table></figure><p>然后安装依赖</p><figure class="highlight txt"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pip install zai-sdk</span><br></pre></td></tr></table></figure><p>示例代码如下：</p><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">import</span> zai <span class="comment"># 导入CogTTS</span></span><br><span class="line"><span class="keyword">from</span> zai <span class="keyword">import</span> ZhipuAiClient <span class="comment"># 导入智谱AI的客户端</span></span><br><span class="line"><span class="keyword">from</span> pathlib <span class="keyword">import</span> Path <span class="comment"># 用于查找和创建文件目录</span></span><br><span class="line"></span><br><span class="line">client=ZhipuAiClient(api_key=<span class="string">&quot;这里输入你的智谱AI的ApiKey&quot;</span>)</span><br><span class="line"><span class="comment"># 创建audio目录（如果不存在）</span></span><br><span class="line">audio_dir = Path(<span class="string">&quot;audio&quot;</span>)</span><br><span class="line">audio_dir.mkdir(exist_ok=<span class="literal">True</span>)</span><br><span class="line">speech_file_path = audio_dir / <span class="string">&quot;speech.wav&quot;</span></span><br><span class="line"></span><br><span class="line">content=<span class="string">&quot;&quot;</span> <span class="comment"># 用于保存从文本中读出的内容</span></span><br><span class="line">spech_text_file_path=Path(<span class="string">&quot;speech.txt&quot;</span>)</span><br><span class="line"><span class="keyword">with</span> <span class="built_in">open</span>(spech_text_file_path,<span class="string">&#x27;r&#x27;</span>,encoding=<span class="string">&#x27;utf-8&#x27;</span>) <span class="keyword">as</span> f:</span><br><span class="line">    content=f.read()</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">response=client.audio.speech(</span><br><span class="line">    model=<span class="string">&quot;cogtts&quot;</span>, <span class="comment"># 制定使用的模型为cogtts 这是固定的</span></span><br><span class="line">    <span class="built_in">input</span>=content, <span class="comment"># 设置要让模型读取的文本内容</span></span><br><span class="line">    voice=<span class="string">&quot;douji&quot;</span>, <span class="comment"># 这里可以设置语音的音色，根据官方文档可以有多个音色</span></span><br><span class="line">    response_format=<span class="string">&quot;wav&quot;</span>, <span class="comment"># 返回的文件格式，支持 wav和pcm</span></span><br><span class="line">    speed=<span class="number">1.0</span>, <span class="comment"># 语速，默认1.0，取值范围[0.5, 2]</span></span><br><span class="line">    volume=<span class="number">1.0</span> <span class="comment"># 音量，默认1.0，取值范围(0, 10]</span></span><br><span class="line">)</span><br><span class="line">response.stream_to_file(speech_file_path)</span><br></pre></td></tr></table></figure><p>CogTTS支持的音色</p><ul><li>tongtong: 彤彤，默认音色</li><li>chuichui: 锤锤</li><li>xiaochen: 小陈</li><li>jam: 动动动物圈jam音色</li><li>kazi: 动动动物圈kazi音色</li><li>douji: 动动动物圈douji音色</li><li>luodo: 动动动物圈luodo音色</li></ul>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> CogTTS </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>Windows10 最长路径字符限制导致Python依赖安装异常的解决办法</title>
       <link href="/2025/09/26/51-Windows10-%E6%9C%80%E9%95%BF%E8%B7%AF%E5%BE%84%E5%AD%97%E7%AC%A6%E9%99%90%E5%88%B6%E5%AF%BC%E8%87%B4Python%E4%BE%9D%E8%B5%96%E5%AE%89%E8%A3%85%E5%BC%82%E5%B8%B8%E7%9A%84%E8%A7%A3%E5%86%B3%E5%8A%9E%E6%B3%95/"/>
       <url>/2025/09/26/51-Windows10-%E6%9C%80%E9%95%BF%E8%B7%AF%E5%BE%84%E5%AD%97%E7%AC%A6%E9%99%90%E5%88%B6%E5%AF%BC%E8%87%B4Python%E4%BE%9D%E8%B5%96%E5%AE%89%E8%A3%85%E5%BC%82%E5%B8%B8%E7%9A%84%E8%A7%A3%E5%86%B3%E5%8A%9E%E6%B3%95/</url>
