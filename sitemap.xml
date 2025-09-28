@@ -2,6 +2,15 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://www.liuguodnog.cn/2025/09/28/53-%E4%BD%BF%E7%94%A8Firecrawl%E6%8A%93%E5%8F%96%E7%BD%91%E9%A1%B5%E5%86%85%E5%AE%B9%E5%B9%B6%E8%BE%93%E5%87%BA%E4%B8%BAMarkdown%E6%96%87%E4%BB%B6/</loc>
+    
+    <lastmod>2025-09-28</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
     <loc>https://www.liuguodnog.cn/2025/09/26/52-%E4%BD%BF%E7%94%A8%E6%99%BA%E8%B0%B1CogTTS%E5%B0%86%E6%96%87%E6%9C%AC%E8%BD%AC%E6%8D%A2%E4%B8%BA%E8%AF%AD%E9%9F%B3/</loc>
     
     <lastmod>2025-09-26</lastmod>
@@ -683,6 +692,13 @@
   
   <url>
     <loc>https://www.liuguodnog.cn/tags/CogTTS/</loc>
+    <lastmod>2025-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/Firecrawl/</loc>
     <lastmod>2025-09-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>

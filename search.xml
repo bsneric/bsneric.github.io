@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>使用Firecrawl抓取网页内容并输出为Markdown文件</title>
+      <link href="/2025/09/28/53-%E4%BD%BF%E7%94%A8Firecrawl%E6%8A%93%E5%8F%96%E7%BD%91%E9%A1%B5%E5%86%85%E5%AE%B9%E5%B9%B6%E8%BE%93%E5%87%BA%E4%B8%BAMarkdown%E6%96%87%E4%BB%B6/"/>
+      <url>/2025/09/28/53-%E4%BD%BF%E7%94%A8Firecrawl%E6%8A%93%E5%8F%96%E7%BD%91%E9%A1%B5%E5%86%85%E5%AE%B9%E5%B9%B6%E8%BE%93%E5%87%BA%E4%B8%BAMarkdown%E6%96%87%E4%BB%B6/</url>
+      
+        <content type="html"><![CDATA[<p>我们要训练大模型离不开为其提供语料，在实际的工作中，对于自然语言类知识，最好的方式是提供Markdown格式的内容。<br>现在的互联网上有大量的内容可以供我们拿来使用，但是还需要将其格式转换为Markdown格式。<a href="https://www.firecrawl.dev/">Firecrawl</a> 是一个方便的工具，可以快速的根据提供的网页地址甚至是一个网站链接将内容抓取出来，并且可以输出为Markdown、HTML、Json等多种格式。<br>Firecrawl是开源的，我们可以本地化部署这个服务来使用。不过它也提供了在线的SaaS服务。下面这个例子展示了如何通过调用它的SaaS服务来抓取知乎上的一篇文章。</p><p>首先，我们需要注册一个Firecrawl的账号。 进入下面这个网址：</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">https://www.firecrawl.dev/</span><br></pre></td></tr></table></figure><p>注册一个账号，就可以使用了。Firecrawl提供500个积分的免费额度。这500个积分可以用于抓取500个页面，对于我们的例子讲解足够了，它也提供了收费服务，可以通过这里查看价格 <a href="https://www.firecrawl.dev/pricing">Firecrawl - The Web Data API for AI</a>。</p><p>注册账号之后，Firecrawl会提供给我们一个API Key，我们在执行代码时需要用到它。</p><p>我们用Python来写这个例子（Firecrawl也提供了NodeJs的SDK，以及Http API）。</p><p>首先安装Python依赖：</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pip install firecrawl-py</span><br></pre></td></tr></table></figure><p>下面是例子代码：</p><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> firecrawl <span class="keyword">import</span> Firecrawl </span><br><span class="line"></span><br><span class="line">api_key=<span class="string">&quot;写入你的Firecrawl API Key&quot;</span></span><br><span class="line">firecrawl=Firecrawl(api_key=api_key)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment"># 抓取一个网页</span></span><br><span class="line">scrap_result=firecrawl.scrape(<span class="string">&quot;https://zhuanlan.zhihu.com/p/1954937234307388150&quot;</span></span><br><span class="line">,formats=[<span class="string">&quot;markdown&quot;</span>])</span><br><span class="line"><span class="comment"># 获取页面的标题</span></span><br><span class="line">title=scrap_result.metadata.title</span><br><span class="line"><span class="comment"># 用标题来命名markdown文件并写入本地磁盘</span></span><br><span class="line"><span class="keyword">with</span> <span class="built_in">open</span>(<span class="string">f&quot;<span class="subst">&#123;title&#125;</span>.md&quot;</span>, <span class="string">&#x27;w&#x27;</span>, encoding=<span class="string">&#x27;utf-8&#x27;</span>) <span class="keyword">as</span> f:</span><br><span class="line">            f.write(scrap_result.markdown)</span><br><span class="line"></span><br></pre></td></tr></table></figure><p>运行上面代码后，会在当前目录生成一个.md的Markdown文件，包含了从提供的网址抓取到的网页内容并转换成了markdown格式。</p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> AI </tag>
+            
+            <tag> Firecrawl </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>使用智谱CogTTS将文本转换为语音</title>
       <link href="/2025/09/26/52-%E4%BD%BF%E7%94%A8%E6%99%BA%E8%B0%B1CogTTS%E5%B0%86%E6%96%87%E6%9C%AC%E8%BD%AC%E6%8D%A2%E4%B8%BA%E8%AF%AD%E9%9F%B3/"/>
       <url>/2025/09/26/52-%E4%BD%BF%E7%94%A8%E6%99%BA%E8%B0%B1CogTTS%E5%B0%86%E6%96%87%E6%9C%AC%E8%BD%AC%E6%8D%A2%E4%B8%BA%E8%AF%AD%E9%9F%B3/</url>
