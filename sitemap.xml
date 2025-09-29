@@ -2,6 +2,15 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://www.liuguodnog.cn/2025/09/29/54-Word%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8/</loc>
+    
+    <lastmod>2025-09-29</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
     <loc>https://www.liuguodnog.cn/2025/09/28/53-%E4%BD%BF%E7%94%A8Firecrawl%E6%8A%93%E5%8F%96%E7%BD%91%E9%A1%B5%E5%86%85%E5%AE%B9%E5%B9%B6%E8%BE%93%E5%87%BA%E4%B8%BAMarkdown%E6%96%87%E4%BB%B6/</loc>
     
     <lastmod>2025-09-28</lastmod>
@@ -699,6 +708,20 @@
   
   <url>
     <loc>https://www.liuguodnog.cn/tags/Firecrawl/</loc>
+    <lastmod>2025-09-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/Office/</loc>
+    <lastmod>2025-09-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91/</loc>
     <lastmod>2025-09-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
