@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>CentOS 下安装Docker</title>
+      <link href="/2025/10/10/56-CentOS-%E4%B8%8B%E5%AE%89%E8%A3%85Docker/"/>
+      <url>/2025/10/10/56-CentOS-%E4%B8%8B%E5%AE%89%E8%A3%85Docker/</url>
+      
+        <content type="html"><![CDATA[<p>由于Docker官方服务的变更，原有的一键安装Docker的命令无法执行。下面是CentOS 7中手动安装的过程。</p><h2 id="1-卸载旧版本-Docker"><a href="#1-卸载旧版本-Docker" class="headerlink" title="1. 卸载旧版本 Docker"></a>1. 卸载旧版本 Docker</h2><p>如果系统中已安装旧版本的 Docker，请先卸载：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">sudo yum remove docker \</span><br><span class="line">               docker-client \</span><br><span class="line">               docker-client-latest \</span><br><span class="line">               docker-common \</span><br><span class="line">               docker-latest \</span><br><span class="line">               docker-latest-logrotate \</span><br><span class="line">               docker-logrotate \</span><br><span class="line">               docker-engine</span><br></pre></td></tr></table></figure><h2 id="2-安装依赖工具"><a href="#2-安装依赖工具" class="headerlink" title="2. 安装依赖工具"></a>2. 安装依赖工具</h2><p>安装 <em>yum-utils</em> 工具，用于管理软件包和配置仓库：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum install -y yum-utils</span><br></pre></td></tr></table></figure><h2 id="3-添加-Docker-官方仓库"><a href="#3-添加-Docker-官方仓库" class="headerlink" title="3. 添加 Docker 官方仓库"></a>3. 添加 Docker 官方仓库</h2><p>运行以下命令添加 Docker 的官方仓库：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo</span><br></pre></td></tr></table></figure><h2 id="4-安装-Docker"><a href="#4-安装-Docker" class="headerlink" title="4. 安装 Docker"></a>4. 安装 Docker</h2><p>使用以下命令安装 Docker：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum install -y docker-ce docker-ce-cli containerd.io</span><br></pre></td></tr></table></figure><h2 id="5-启动并验证-Docker"><a href="#5-启动并验证-Docker" class="headerlink" title="5. 启动并验证 Docker"></a>5. 启动并验证 Docker</h2><ul><li>启动 Docker 服务：</li></ul><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl start docker</span><br></pre></td></tr></table></figure><ul><li>验证是否成功运行：</li></ul><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl status docker</span><br></pre></td></tr></table></figure><h2 id="6-设置开机自启"><a href="#6-设置开机自启" class="headerlink" title="6. 设置开机自启"></a>6. 设置开机自启</h2><p>让 Docker 在系统启动时自动运行：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl enable docker</span><br></pre></td></tr></table></figure><h2 id="7-测试安装"><a href="#7-测试安装" class="headerlink" title="7. 测试安装"></a>7. 测试安装</h2><p>运行以下命令测试 Docker 是否正常工作：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo docker run hello-world</span><br></pre></td></tr></table></figure><p>如果看到 “Hello from Docker!” 的欢迎信息，说明安装成功。</p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> 编程 </tag>
+            
+            <tag> Docker </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>女儿数学考试成绩不理想</title>
       <link href="/2025/09/30/55-%E5%A5%B3%E5%84%BF%E6%95%B0%E5%AD%A6%E8%80%83%E8%AF%95%E6%88%90%E7%BB%A9%E4%B8%8D%E7%90%86%E6%83%B3/"/>
       <url>/2025/09/30/55-%E5%A5%B3%E5%84%BF%E6%95%B0%E5%AD%A6%E8%80%83%E8%AF%95%E6%88%90%E7%BB%A9%E4%B8%8D%E7%90%86%E6%83%B3/</url>
