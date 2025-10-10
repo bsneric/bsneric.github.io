@@ -2,6 +2,24 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://www.liuguodnog.cn/2025/10/10/58-%E6%90%AD%E5%BB%BAFisco-Bcos%E7%9A%84%E7%AE%A1%E7%90%86%E7%AB%AFWeBase-Front/</loc>
+    
+    <lastmod>2025-10-10</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/2025/10/10/57-CentOS-%E4%B8%8B%E5%AE%89%E8%A3%85Fisco-Bcos/</loc>
+    
+    <lastmod>2025-10-10</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
     <loc>https://www.liuguodnog.cn/2025/10/10/56-CentOS-%E4%B8%8B%E5%AE%89%E8%A3%85Docker/</loc>
     
     <lastmod>2025-10-10</lastmod>
@@ -754,6 +772,20 @@
   
   <url>
     <loc>https://www.liuguodnog.cn/tags/Docker/</loc>
+    <lastmod>2025-10-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/%E5%8C%BA%E5%9D%97%E9%93%BE/</loc>
+    <lastmod>2025-10-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/fisco-bcos/</loc>
     <lastmod>2025-10-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
