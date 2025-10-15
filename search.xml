@@ -4,6 +4,33 @@
   
     
     <entry>
+      <title>59 修改Fisco Bcos的节点配置，实现外网访问</title>
+      <link href="/2025/10/15/59-%E4%BF%AE%E6%94%B9Fisco-Bcos%E7%9A%84%E8%8A%82%E7%82%B9%E9%85%8D%E7%BD%AE%EF%BC%8C%E5%AE%9E%E7%8E%B0%E5%A4%96%E7%BD%91%E8%AE%BF%E9%97%AE/"/>
+      <url>/2025/10/15/59-%E4%BF%AE%E6%94%B9Fisco-Bcos%E7%9A%84%E8%8A%82%E7%82%B9%E9%85%8D%E7%BD%AE%EF%BC%8C%E5%AE%9E%E7%8E%B0%E5%A4%96%E7%BD%91%E8%AE%BF%E9%97%AE/</url>
+      
+        <content type="html"><![CDATA[<p>按照Fisco Bcos单机部署的模式，其默认是监听在<code>127.0.0.1</code> 的本地回环的。因此，如果我们的应用想要通过主机的IP+端口号的方式访问rpc服务是不行的。<br>所以，我们需要通过修改节点的配置文件来实现。找到节点的配置文件，其通常位于<code>127.0.0.1\nodes\</code> 目录下根据我们的选择部署的节点从0开始，node0 node1 node2 node3 等。</p><p>分别打开子目录下的config.ini文件，将 chanell_listen_ip和 jsonrpc_listen_ip 的值改为 0.0.0.0</p><figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">chanell_listen_ip</span>=<span class="number">0.0</span>.<span class="number">0.0</span></span><br><span class="line"><span class="attr">jsonrpc_listen_ip</span>=<span class="number">0.0</span>.<span class="number">0.0</span></span><br></pre></td></tr></table></figure><p>然后重启节点</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">bash nodes/127.0.0.1/stop_all.sh</span><br><span class="line">bash nodes/127.0.0.1/start_all.sh</span><br></pre></td></tr></table></figure><p>如果在Windows主机上开发应用，可以用下面的powershell命令检查 rcp和p2p端口是否已经开启</p><figure class="highlight cmd"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Test-NetConnection <span class="number">192</span>.<span class="number">168</span>.<span class="number">201</span>.<span class="number">128</span> -Port <span class="number">8545</span></span><br><span class="line">Test-NetConnection <span class="number">192</span>.<span class="number">168</span>.<span class="number">201</span>.<span class="number">128</span> -Port <span class="number">20200</span></span><br><span class="line">Test-NetConnection <span class="number">192</span>.<span class="number">168</span>.<span class="number">201</span>.<span class="number">128</span> -Port <span class="number">30300</span></span><br></pre></td></tr></table></figure><p><code>Test-NetConnection</code> 是powershell用于测试远程主机和端口是否可联通的命令<br>如果看到类似下面的结果说明可以联通</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">ComputerName     : 192.168.201.128</span><br><span class="line">RemoteAddress    : 192.168.201.128</span><br><span class="line">RemotePort       : 8545</span><br><span class="line">InterfaceAlias   : VMware Network Adapter VMnet8</span><br><span class="line">SourceAddress    : 192.168.201.1</span><br><span class="line">TcpTestSucceeded : True</span><br></pre></td></tr></table></figure><p>主要是 <code>TcpTestSucceeded : True</code> 说明联通了，如果是False说明连接失败。</p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> 区块链 </tag>
+            
+            <tag> fisco bcos </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>搭建Fisco-Bcos的管理端WeBase-Front</title>
       <link href="/2025/10/10/58-%E6%90%AD%E5%BB%BAFisco-Bcos%E7%9A%84%E7%AE%A1%E7%90%86%E7%AB%AFWeBase-Front/"/>
       <url>/2025/10/10/58-%E6%90%AD%E5%BB%BAFisco-Bcos%E7%9A%84%E7%AE%A1%E7%90%86%E7%AB%AFWeBase-Front/</url>
