@@ -4,6 +4,31 @@
   
     
     <entry>
+      <title>64 安装Gradle 6.3</title>
+      <link href="/2025/10/20/64-%E5%AE%89%E8%A3%85Gradle-6-3/"/>
+      <url>/2025/10/20/64-%E5%AE%89%E8%A3%85Gradle-6-3/</url>
+      
+        <content type="html"><![CDATA[<p>因为打算开发Fisco的合约应用，所以按照官方文档的要求，需要安装Gradle6.3版本（7以上的版本会报错。）</p><h2 id="下载安装"><a href="#下载安装" class="headerlink" title="下载安装"></a>下载安装</h2><p>首先，下载Gradle6.3的压缩包 <a href="https://mirrors.cloud.tencent.com/gradle/gradle-6.3-all.zip">gradle-6.3-all.zip</a></p><p>然后解压缩到某个回来，比如：</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">D:\devspace\gradle-6.3</span><br></pre></td></tr></table></figure><p>配置系统环境变量</p><p><img src="https://raw.githubusercontent.com/bsneric/note-gen-image-sync/main/20251020171400704.png" alt="image.png"></p><p><img src="https://raw.githubusercontent.com/bsneric/note-gen-image-sync/main/20251020171447622.png" alt="image.png"></p><p>测试验证</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gradle -v </span><br></pre></td></tr></table></figure><p>输出</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">------------------------------------------------------------</span><br><span class="line">Gradle 6.3</span><br><span class="line">------------------------------------------------------------</span><br><span class="line"></span><br><span class="line">Build time:   2020-03-24 19:52:07 UTC</span><br><span class="line">Revision:     bacd40b727b0130eeac8855ae3f9fd9a0b207c60</span><br><span class="line"></span><br><span class="line">Kotlin:       1.3.70</span><br><span class="line">Groovy:       2.5.10</span><br><span class="line">Ant:          Apache Ant(TM) version 1.10.7 compiled on September 1 2019</span><br><span class="line">JVM:          1.8.0_202 (Oracle Corporation 25.202-b08)</span><br><span class="line">OS:           Windows 10 10.0 amd64</span><br></pre></td></tr></table></figure><h2 id="配置镜像仓库"><a href="#配置镜像仓库" class="headerlink" title="配置镜像仓库"></a>配置镜像仓库</h2><p>Gradle默认从国际站点下载，在国内会比较慢，可以配置腾讯的镜像源。<br>在gradle-6.3\init.d下创建init.gradle文件，然后输入如下内容</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">allprojects &#123;</span><br><span class="line">    repositories &#123;</span><br><span class="line">        // 阿里云镜像</span><br><span class="line">        maven &#123; url &#x27;https://maven.aliyun.com/repository/public/&#x27; &#125;</span><br><span class="line">        maven &#123; url &#x27;https://maven.aliyun.com/repository/google/&#x27; &#125;</span><br><span class="line">        maven &#123; url &#x27;https://maven.aliyun.com/repository/gradle-plugin/&#x27; &#125;</span><br><span class="line">        </span><br><span class="line">        // 华为云镜像</span><br><span class="line">        maven &#123; url &#x27;https://mirrors.huaweicloud.com/repository/maven/&#x27; &#125;</span><br><span class="line">        </span><br><span class="line">        // 备用Maven中央仓库</span><br><span class="line">        mavenCentral()</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    buildscript &#123;</span><br><span class="line">        repositories &#123;</span><br><span class="line">            maven &#123; url &#x27;https://maven.aliyun.com/repository/public/&#x27; &#125;</span><br><span class="line">            maven &#123; url &#x27;https://maven.aliyun.com/repository/gradle-plugin/&#x27; &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><h2 id="验证有消息"><a href="#验证有消息" class="headerlink" title="验证有消息"></a>验证有消息</h2><p>创建一个Java项目</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">mkdir gradle-test</span><br><span class="line">cd gradle-test</span><br><span class="line">gradle init --type java-application</span><br></pre></td></tr></table></figure><p>然后编译它</p><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gradle build</span><br></pre></td></tr></table></figure><p>基于国内源会非常快。</p>]]></content>
+      
+      
+      <categories>
+          
+          <category> 编程 </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> Java </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>62 CentOS 上搭建WeBase</title>
       <link href="/2025/10/20/62-CentOS-%E4%B8%8A%E6%90%AD%E5%BB%BAWeBase/"/>
       <url>/2025/10/20/62-CentOS-%E4%B8%8A%E6%90%AD%E5%BB%BAWeBase/</url>

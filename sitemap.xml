@@ -2,6 +2,15 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://www.liuguodnog.cn/2025/10/20/64-%E5%AE%89%E8%A3%85Gradle-6-3/</loc>
+    
+    <lastmod>2025-10-20</lastmod>
+    
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
     <loc>https://www.liuguodnog.cn/2025/10/20/62-CentOS-%E4%B8%8A%E6%90%AD%E5%BB%BAWeBase/</loc>
     
     <lastmod>2025-10-20</lastmod>
@@ -845,6 +854,13 @@
   
   <url>
     <loc>https://www.liuguodnog.cn/tags/%E8%8A%AF%E7%89%87/</loc>
+    <lastmod>2025-10-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  
+  <url>
+    <loc>https://www.liuguodnog.cn/tags/Java/</loc>
     <lastmod>2025-10-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.2</priority>
