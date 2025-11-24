@@ -1,0 +1,352 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content="聚焦 IT 售前解决方案。​在这里，你能学到售前必备的方案撰写技巧，掌握需求分析、竞品应对的实用方法；也能快速理清前沿技术与业务的结合点，让方案更有说服力。"><title>62 CentOS 上搭建WeBase | 解.方.程</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="https://unpkg.com/normalize.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/pure-min.css"><link rel="stylesheet" type="text/css" href="https://unpkg.com/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="https://unpkg.com/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="https://unpkg.com/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="https://unpkg.com/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="https://unpkg.com/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="https://unpkg.com/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 7.3.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">62 CentOS 上搭建WeBase</h1><a id="logo" href="/.">解.方.程</a><p class="description">解方程：解决方案、方法论、编程技术</p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">62 CentOS 上搭建WeBase</h1><div class="post-meta">2025-10-20<span> | </span><span class="category"><a href="/categories/%E7%BC%96%E7%A8%8B/">编程</a></span></div><div class="post-content"><blockquote>
+<p>WeBASE（WeBank Blockchain Application Software Extension） 是在区块链应用和FISCO-BCOS节点之间搭建的一套通用组件。围绕交易、合约、密钥管理，数据，可视化管理来设计各个模块，开发者可以根据业务所需，选择子系统进行部署。WeBASE屏蔽了区块链底层的复杂度，降低开发者的门槛，大幅提高区块链应用的开发效率，包含节点前置、节点管理、交易链路，数据导出，Web管理平台等子系统。</p>
+</blockquote>
+<p>参考原文：<a target="_blank" rel="noopener" href="https://webasedoc.readthedocs.io/zh-cn/latest/docs/WeBASE-Install/visual_deploy.html">可视化部署 — WeBASE v1.5.5 文档</a></p>
+<p>本文介绍WeBase的可视化部署。可视化部署是指通过 WeBASE 管理平台（WeBASE-Web + WeBASE-Node-Manager），在 <strong>多台</strong> 主机上快速部署 <strong>FISCO-BCOS 底层节点和 WeBASE-Front 前置</strong> 以及 对底层节点的扩容操作。</p>
+<p>可视化部署，需要先部署依赖服务，包括管理平台（WeBASE-Web）、节点管理子系统（WeBASE-Node-Manager）、签名服务（WeBASE-Sign）。</p>
+<p>然后通过 WeBASE 管理平台（WeBASE-Web）的界面在填入的主机中部署节点（FISCO-BCOS 2.5.0+，暂未支持FISCO-BCOS 3.0系列）和节点前置子系统（WeBASE-Front 1.4.0+）。</p>
+<h2 id="环境准备"><a href="#环境准备" class="headerlink" title="环境准备"></a>环境准备</h2><h3 id="主机防火墙需要开放以下端口。"><a href="#主机防火墙需要开放以下端口。" class="headerlink" title="主机防火墙需要开放以下端口。"></a>主机防火墙需要开放以下端口。</h3><table>
+<thead>
+<tr>
+<th>端口</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>22</td>
+<td>默认SSH登录端口</td>
+</tr>
+<tr>
+<td>5000</td>
+<td>WeBASE-Web 节点管理平台的访问端口</td>
+</tr>
+<tr>
+<td>输入如下命令</td>
+<td></td>
+</tr>
+</tbody></table>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> firewall-cmd --zone=public --add-port=22/tcp --permanent</span><br><span class="line"><span class="built_in">sudo</span> firewall-cmd --zone=public --add-port=5000/tcp --permanent</span><br><span class="line"><span class="built_in">sudo</span> firewall-cmd --zone=public --add-port=5002/tcp --permanent</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> firewall-cmd --reload</span><br></pre></td></tr></table></figure>
+
+<h3 id="更新CentOS-源"><a href="#更新CentOS-源" class="headerlink" title="更新CentOS 源"></a>更新CentOS 源</h3><p>备份原来的源文件</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> <span class="built_in">cp</span> /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak</span><br></pre></td></tr></table></figure>
+
+<p>下载阿里云的镜像源配置文件</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> wget -O /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>清理旧缓存并生成新缓存：</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> yum clean all</span><br><span class="line"><span class="built_in">sudo</span> yum makecache</span><br></pre></td></tr></table></figure>
+<h2 id="系统依赖"><a href="#系统依赖" class="headerlink" title="系统依赖"></a>系统依赖</h2><p>配置系统依赖分成<strong>宿主机</strong>（Node-Manager所在主机）与<strong>节点主机</strong>（节点所在主机）两种：</p>
+<ul>
+<li>宿主机：安装WeBASE-Node-Manager的主机，配置Ansible、配置Ansible免密登录节点机</li>
+<li>节点主机：用于安装节点的主机，配置docker及docker用户组、配置Ansible用户的sudo权限、安装FISCO BOCS节点依赖</li>
+</ul>
+<p><strong>注：宿主机也需要安装节点时，则需要同时配置。</strong></p>
+<h3 id="配置Ansible"><a href="#配置Ansible" class="headerlink" title="配置Ansible"></a>配置Ansible</h3><p>Ansible配置包括以下三步：</p>
+<ul>
+<li>宿主机安装Ansible<ul>
+<li><strong>仅在宿主机安装节点</strong>时，则仅需安装Ansible，无需完成下面两步host与免密配置</li>
+</ul>
+</li>
+<li>配置Ansible host列表</li>
+<li>配置Ansible免密登录到节点主机</li>
+</ul>
+<h4 id="安装Ansible"><a href="#安装Ansible" class="headerlink" title="安装Ansible"></a>安装Ansible</h4><p><strong>注</strong>：Ansible只需要安装在宿主机上，节点主机无需安装Ansible，只需配置宿主机到节点主机的免密登录</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">yum install epel-release -y</span><br><span class="line">yum install ansible –y</span><br></pre></td></tr></table></figure>
+<p>安装完之后，验证</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ansible --version</span><br></pre></td></tr></table></figure>
+
+<h4 id="配置Ansible-host-key-checking"><a href="#配置Ansible-host-key-checking" class="headerlink" title="配置Ansible host_key_checking"></a>配置Ansible host_key_checking</h4><p>配置Ansible的Host key checking，将自动确认连接到远程主机</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">vi /etc/ansible/ansible.cfg</span><br><span class="line"></span><br><span class="line"><span class="comment"># 找到host_key_checking选项</span></span><br><span class="line">···</span><br><span class="line">host_key_checking = False</span><br></pre></td></tr></table></figure>
+
+<h4 id="免密登录配置"><a href="#免密登录配置" class="headerlink" title="免密登录配置"></a>免密登录配置</h4><p>在节点管理台进行可视化部署时，节点管理（WeBASE-Node-Manager）服务会为每个节点生成相应的配置文件，然后通过Ansible的免密登录远程操作，在远程的节点主机中执行系统命令来操作节点。</p>
+<p>下面介绍配置免密登录的各个步骤</p>
+<ol>
+<li>配置 WeBASE-Node-Manager 主机到其它节点主机的 SSH 免密登录；</li>
+<li>配置Ansible的hosts列表并配置免密登录私钥路径</li>
+<li>注意免密登录的账号sudo权限，否则会造成Docker服务启动、检测端口占用失败；</li>
+<li>如果免密账号为非 root 账号，保证账号有 sudo <strong>免密</strong> 权限，即使用 sudo 执行命令时，不需要输入密码；</li>
+</ol>
+<p><strong>免密登录配置方法</strong></p>
+<blockquote>
+<p>[!important]<br>如果 WeBASE-Node-Manager 所在主机已经生成过秘钥对，建议使用命令 ssh-keygen -t rsa -m PEM 重新生成；</p>
+</blockquote>
+<p>登录 WeBASE-Node-Manager 所在主机：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">## ssh root@[IP]</span></span><br><span class="line">ssh root@192.168.201.133</span><br></pre></td></tr></table></figure>
+
+<p>检查 <code>~/.ssh/</code> 目录是否已经存在 <code>id_rsa</code> 私钥文件和对应的 <code>id_rsa.pub</code> 公钥文件。如果存在，备份现有私钥对</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">mv</span> ~/.ssh/id_rsa ~/.ssh/id_rsa.bak</span><br><span class="line"><span class="built_in">mv</span> ~/.ssh/id_rsa.pub ~/.ssh/id_rsa.pub.bak</span><br></pre></td></tr></table></figure>
+
+<p>如果没有文件会出现下面的找不到文件的提示，属于正常情况</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">No such file or directory</span><br></pre></td></tr></table></figure>
+<p>执行命令 <code>ssh-keygen -t rsa -m PEM</code>，然后直接两次回车即可生成（提示输入密码时，直接回车）</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh-keygen -t rsa -m PEM</span><br></pre></td></tr></table></figure>
+
+<p>输出下面的信息说明创建证书成功</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">Generating public/private rsa key pair.</span><br><span class="line">Enter file in which to save the key (/root/.ssh/id_rsa): </span><br><span class="line">Enter passphrase (empty for no passphrase): </span><br><span class="line">Enter same passphrase again: </span><br><span class="line">Your identification has been saved in /root/.ssh/id_rsa.</span><br><span class="line">Your public key has been saved in /root/.ssh/id_rsa.pub.</span><br><span class="line">The key fingerprint is:</span><br><span class="line">SHA256:vZU9eYKCJIFeApkg1gnmjmz3XTvzLRYX2/a9BRaHIZc root@localhost.localdomain</span><br><span class="line">The key&#x27;s randomart image is:</span><br><span class="line">+---[RSA 2048]----+</span><br><span class="line">|o=++...     . o. |</span><br><span class="line">|= ooo ..     oEo |</span><br><span class="line">| . . o. .     o .|</span><br><span class="line">|+   .  o o   = + |</span><br><span class="line">|.+ .    S.o + @ .|</span><br><span class="line">|. . . . . .= + B |</span><br><span class="line">|     . . +. o . +|</span><br><span class="line">|          +o.   +|</span><br><span class="line">|          .... ..|</span><br><span class="line">+----[SHA256]-----+</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>将公钥文件上传到需要免密登录的主机（替换<code> [IP]</code> 为节点主机的 IP 地址），然后输入远程主机的登录密码。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa.pub root@[IP]</span><br></pre></td></tr></table></figure>
+<p>假设节点安装的4台主机IP如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">192.168.201.129</span><br><span class="line">192.168.201.130</span><br><span class="line">192.168.201.131</span><br><span class="line">192.168.201.132</span><br></pre></td></tr></table></figure>
+
+<p>则启动相应的节点主机并执行下面的命令:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa.pub root@192.168.201.129</span><br><span class="line"></span><br><span class="line">ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa.pub root@192.168.201.130</span><br><span class="line"></span><br><span class="line">ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa.pub root@192.168.201.131</span><br><span class="line"></span><br><span class="line">ssh-copy-id -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa.pub root@192.168.201.132</span><br></pre></td></tr></table></figure>
+
+<p>运行命令后会提示输入root用户的密码，如果看到下面的提示说明证书上传成功</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Number of key(s) added: 1</span><br><span class="line"></span><br><span class="line">Now try logging into the machine, with:   &quot;ssh -o &#x27;StrictHostKeyChecking=no&#x27; &#x27;root@192.168.201.129&#x27;&quot;</span><br><span class="line">and check to make sure that only the key(s) you wanted were added.</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>检查从部署 WeBASE-Node-Manager 服务的主机是否能成功免密登录部署节点的主机（替换<code> [IP]</code> 为主机的 IP 地址）</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># ssh -o StrictHostKeyChecking=no root@[IP]</span></span><br><span class="line">ssh -o StrictHostKeyChecking=no root@192.168.201.129</span><br><span class="line"></span><br><span class="line">ssh -o StrictHostKeyChecking=no root@192.168.201.130</span><br><span class="line"></span><br><span class="line">ssh -o StrictHostKeyChecking=no root@192.168.201.131</span><br><span class="line"></span><br><span class="line">ssh -o StrictHostKeyChecking=no root@192.168.201.132</span><br></pre></td></tr></table></figure>
+
+<p>如果出现类似下面的信息说明可以成功登录</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Last login: Wed Oct 15 23:47:59 2025</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><em>切记妥善保管免密登录的私钥，否则当前主机与ssh免密登录的主机均会被控制</em></p>
+<p>此处配置宿主机免密登录到节点主机完成后，记住宿主机中<code>id_rsa</code>私钥的路径，下一步进行Ansible中hosts的免密配置。</p>
+<p><strong>配置Ansible Hosts与免密登录</strong></p>
+<p>在<code>/etc/ansible/hosts</code>文件中添加IP组<code>webase</code>，并配置节点主机的IP、免密登录账号和私钥路径、SSH端口。</p>
+<blockquote>
+<p>[!note]<br><strong>注</strong>：若后续需要添加新的主机，需要将新主机的IP添加到此处</p>
+</blockquote>
+<p>添加以下内容：此处假设节点机IP为192.168.201.133，免密登录账户为root，且<code>id_rsa</code>免密私钥的路径为<code>/root/.ssh/id_rsa</code>，ssh端口使用22端口，添加名为<code>webase</code>的IP组</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 先登录到NodeManger主机也就是我们的宿主机</span></span><br><span class="line">ssh -o StrictHostKeyChecking=no root@192.168.201.133</span><br><span class="line"><span class="comment">## 然后添加节点的面膜登录配置</span></span><br><span class="line">vi /etc/ansible/hosts</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">[webase]</span><br><span class="line">192.168.201.129 ansible_ssh_private_key_file=/root/.ssh/id_rsa  ansible_ssh_user=root  ansible_ssh_port=22</span><br><span class="line">192.168.201.130 ansible_ssh_private_key_file=/root/.ssh/id_rsa  ansible_ssh_user=root  ansible_ssh_port=22</span><br><span class="line">192.168.201.131 ansible_ssh_private_key_file=/root/.ssh/id_rsa  ansible_ssh_user=root  ansible_ssh_port=22</span><br><span class="line">192.168.201.132 ansible_ssh_private_key_file=/root/.ssh/id_rsa  ansible_ssh_user=root  ansible_ssh_port=22</span><br></pre></td></tr></table></figure>
+<h4 id="测试Ansible"><a href="#测试Ansible" class="headerlink" title="测试Ansible"></a>测试Ansible</h4><p>执行Ansible的<code>--list-hosts</code>命令查看是否已添加成功</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">ansible webase --list-hosts</span><br><span class="line">  hosts (4):</span><br><span class="line">    192.168.201.129</span><br><span class="line">    192.168.201.130</span><br><span class="line">    192.168.201.131</span><br><span class="line">    192.168.201.132</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>执行Ansible的<code>ping</code>命令，检测添加到hosts中各个节点主机IP能否被访问，免密配置是否已生效</p>
+<ul>
+<li>若出现<code>IP | SUCCESS</code>的则代表该IP可连通</li>
+<li>如果出现<code>FAILED</code>代表该IP无法连接，需要根据上文的免密登录配置进行<code>ssh -o StrictHostKeyChecking=no root@[IP]</code>检测</li>
+</ul>
+<p>对ansible中的webase ip组进行ping检测</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ansible webase -m ping</span><br></pre></td></tr></table></figure>
+
+<p>输出结果类似下面这样</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">92.168.201.131 | SUCCESS =&gt; &#123;</span><br><span class="line">    &quot;ansible_facts&quot;: &#123;</span><br><span class="line">        &quot;discovered_interpreter_python&quot;: &quot;/usr/bin/python&quot;</span><br><span class="line">    &#125;, </span><br><span class="line">    &quot;changed&quot;: false, </span><br><span class="line">    &quot;ping&quot;: &quot;pong&quot;</span><br><span class="line">&#125;</span><br><span class="line">192.168.201.130 | SUCCESS =&gt; &#123;</span><br><span class="line">    &quot;ansible_facts&quot;: &#123;</span><br><span class="line">        &quot;discovered_interpreter_python&quot;: &quot;/usr/bin/python&quot;</span><br><span class="line">    &#125;, </span><br><span class="line">    &quot;changed&quot;: false, </span><br><span class="line">    &quot;ping&quot;: &quot;pong&quot;</span><br><span class="line">&#125;</span><br><span class="line">192.168.201.129 | SUCCESS =&gt; &#123;</span><br><span class="line">    &quot;ansible_facts&quot;: &#123;</span><br><span class="line">        &quot;discovered_interpreter_python&quot;: &quot;/usr/bin/python&quot;</span><br><span class="line">    &#125;, </span><br><span class="line">    &quot;changed&quot;: false, </span><br><span class="line">    &quot;ping&quot;: &quot;pong&quot;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="配置Docker"><a href="#配置Docker" class="headerlink" title="配置Docker"></a>配置Docker</h3><p>配置Docker需要<strong>在每个安装节点的主机上都要执行</strong>，否则将导致节点远程安装失败。包括以下几个步骤</p>
+<ul>
+<li>安装Docker并启动Docker</li>
+<li>配置Docker用户组</li>
+</ul>
+<h4 id="替换阿里源"><a href="#替换阿里源" class="headerlink" title="替换阿里源"></a>替换阿里源</h4><p>docker安装之前先替换centos的源为阿里源</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">yum clean all</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">yum makecache</span><br></pre></td></tr></table></figure>
+
+<p>登录每一个主机安装docker</p>
+<h4 id="安装依赖工具"><a href="#安装依赖工具" class="headerlink" title="安装依赖工具"></a>安装依赖工具</h4><p>安装 <em>yum-utils</em> 工具，用于管理软件包和配置仓库：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum install -y yum-utils</span><br></pre></td></tr></table></figure>
+
+<h4 id="添加-Docker-官方仓库"><a href="#添加-Docker-官方仓库" class="headerlink" title="添加 Docker 官方仓库"></a>添加 Docker 官方仓库</h4><p>运行以下命令添加 Docker 的官方仓库：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo</span><br></pre></td></tr></table></figure>
+<h4 id="安装Docker"><a href="#安装Docker" class="headerlink" title="安装Docker"></a>安装Docker</h4><p>使用以下命令安装 Docker：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo yum install -y docker-ce docker-ce-cli containerd.io</span><br></pre></td></tr></table></figure>
+
+<p>首先查看 Docker 服务是否处于运行状态：</p>
+<p>bash</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> systemctl status docker</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>若输出中包含 <code>inactive (dead)</code>，说明 Docker 服务未启动；</li>
+<li>若包含 <code>active (running)</code>，则可能是守护进程配置异常（后续步骤处理）。</li>
+</ul>
+<p>如果服务未启动，执行以下命令启动服务，并配置开机自动启动（避免下次重启后仍需手动启动）：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 启动 Docker 服务</span></span><br><span class="line"><span class="built_in">sudo</span> systemctl start docker</span><br><span class="line"></span><br><span class="line"><span class="comment"># 设置 Docker 开机自启（可选但推荐）</span></span><br><span class="line"><span class="built_in">sudo</span> systemctl <span class="built_in">enable</span> docker</span><br></pre></td></tr></table></figure>
+
+<h4 id="配置docker用户组"><a href="#配置docker用户组" class="headerlink" title="配置docker用户组"></a>配置docker用户组</h4><p>检测<code>docker ps</code>命令</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker ps</span><br></pre></td></tr></table></figure>
+
+<p>若<code>docker ps</code>命令报错Permission Denied则需要配置docker用户组：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"># 创建docker用户组</span><br><span class="line">sudo groupadd docker</span><br><span class="line"># 将当前用户添加到docker用户组</span><br><span class="line">sudo usermod -aG docker $USER</span><br><span class="line"># 重启docker服务</span><br><span class="line">sudo systemctl restart docker</span><br><span class="line"># 切换或者退出当前账户，重新登入</span><br><span class="line">exit</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>重新登入后，执行<code>docker ps</code>如有输出，未报错Permission Denied则代表配置成功。</p>
+<h2 id="一键部署依赖安装"><a href="#一键部署依赖安装" class="headerlink" title="一键部署依赖安装"></a>一键部署依赖安装</h2><p>一键部署需要安装以下依赖环境</p>
+<table>
+<thead>
+<tr>
+<th>环境</th>
+<th>版本</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Java</td>
+<td>Oracle JDK 8 至 14</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td>MySQL-5.6及以上</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>Python3.6及以上</td>
+</tr>
+<tr>
+<td>PyMySQL</td>
+<td></td>
+</tr>
+</tbody></table>
+<h3 id="Java安装"><a href="#Java安装" class="headerlink" title="Java安装"></a>Java安装</h3><p>基于CentOS的安装，系统默认带有OpenJDK1.8，执行下面命令查看jdk版本</p>
+<blockquote>
+<p>[!caution]<br><strong>CentOS下OpenJDK无法正常工作，需要安装OracleJDK<a target="_blank" rel="noopener" href="https://www.oracle.com/technetwork/java/javase/downloads/index.html">下载链接</a>。</strong></p>
+</blockquote>
+<p>从Oracle官网(<a target="_blank" rel="noopener" href="https://www.oracle.com/java/technologies/downloads/#java8)%E9%80%89%E6%8B%A9Java">https://www.oracle.com/java/technologies/downloads/#java8)选择Java</a> 8或以上的版本下载，例如下载jdk-8u461-linux-x64.tar.gz</p>
+<p>然后可以创建一个文件夹保存下载的文件</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">mkdir</span> /software</span><br></pre></td></tr></table></figure>
+
+<p>解压jdk</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">tar -zxvf jdk-8u461-linux-x64.tar.gz </span><br></pre></td></tr></table></figure>
+
+<p>修改解压后的文件夹，便于查看</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">mv</span> jdk1.8.0_461 jdk-8u461</span><br></pre></td></tr></table></figure>
+
+<p>配置Java环境，编辑&#x2F;etc&#x2F;profile文件</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vim /etc/profile</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 打开以后将下面三句输入到文件里面并保存退出</span></span><br><span class="line"><span class="built_in">export</span> JAVA_HOME=/software/jdk-8u461  <span class="comment">#这是一个文件目录，非文件</span></span><br><span class="line"><span class="built_in">export</span> PATH=<span class="variable">$JAVA_HOME</span>/bin:<span class="variable">$PATH</span></span><br><span class="line"><span class="built_in">export</span> CLASSPATH=.:<span class="variable">$JAVA_HOME</span>/lib/dt.jar:<span class="variable">$JAVA_HOME</span>/lib/tools.jar</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 生效profile</span></span><br><span class="line">$ <span class="built_in">source</span> /etc/profile</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 查询Java版本，出现的版本是自己下载的版本，则安装成功。</span></span><br><span class="line">java -version</span><br></pre></td></tr></table></figure>
+<h3 id="MySQL-安装"><a href="#MySQL-安装" class="headerlink" title="MySQL 安装"></a>MySQL 安装</h3><p>此处以<strong>CentOS 7(x86_64)<strong>安装</strong>MariaDB 10.6</strong>为例。_MariaDB_数据库是 MySQL 的一个分支，主要由开源社区在维护，采用 GPL 授权许可。_MariaDB_完全兼容 MySQL，包括API和命令行。MariaDB 10.2版本对应Mysql 5.7。其他安装方式请参考<a target="_blank" rel="noopener" href="https://dev.mysql.com/downloads/mysql/">MySQL官网</a>。</p>
+<ul>
+<li>CentOS 7 默认MariaDB为5.5版本，安装10.6版本需要按下文进行10.6版本的配置。</li>
+<li>若使用CentOS 8则直接使用<code>sudo yum install -y mariadb*</code>即可安装MariaDB 10.3，并跳到下文的 <em>启停</em> 章节即可。</li>
+</ul>
+<p>使用<code>vi</code>或<code>vim</code>创建新文件<code>/etc/yum.repos.d/mariadb.repo</code>，并写入下文的文件内容（参考<a target="_blank" rel="noopener" href="http://mirrors.ustc.edu.cn/help/mariadb.html">MariaDB中科大镜像源修改</a>进行配置）</p>
+<ul>
+<li>创建repo文件</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> vi /etc/yum.repos.d/mariadb.repo</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>文件内容，此处使用的是中科大镜像源</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># MariaDB 10.6 CentOS repository list - created 2021-07-12 07:37 UTC</span></span><br><span class="line"><span class="comment"># http://downloads.mariadb.org/mariadb/repositories/</span></span><br><span class="line">[mariadb]</span><br><span class="line">name = MariaDB</span><br><span class="line">baseurl = https://mirrors.ustc.edu.cn/mariadb/yum/10.6/centos7-amd64</span><br><span class="line">gpgkey=https://mirrors.ustc.edu.cn/mariadb/yum/RPM-GPG-KEY-MariaDB</span><br><span class="line">gpgcheck=1</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>更新yum源缓存数据</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">yum clean all</span><br><span class="line">yum makecache all</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>安装<code>MariaDB 10.2</code></li>
+<li>如果已存在使用<code>sudo yum install -y mariadb*</code>命令安装的MariaDB，其版本默认为5.5版本，对应Mysql版本为5.5。新版本MariaDB无法兼容升级，需要先<strong>卸载旧版本</strong>的MariaDB，卸载前需要<strong>备份</strong>数据库内容，卸载命令可参考<code>yum remove mariadb</code></li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">sudo</span> yum install -y mariadb-server</span><br></pre></td></tr></table></figure>
+
+<p>启动数据库</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl start mariadb.service</span><br></pre></td></tr></table></figure>
+
+<p>停止数据库</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl stop  mariadb.service</span><br></pre></td></tr></table></figure>
+
+<p>设置开机启动</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo systemctl enable mariadb.service</span><br></pre></td></tr></table></figure>
+
+<p>初始化</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">执行以下命令：</span><br><span class="line">sudo mariadb-secure-installation</span><br><span class="line">以下根据提示输入：</span><br><span class="line">Enter current password for root (enter for none):&lt;–初次运行直接回车</span><br><span class="line">Set root password? [Y/n] &lt;– 是否设置root用户密码，输入y并回车或直接回车</span><br><span class="line">New password: &lt;– 设置root用户的密码</span><br><span class="line">Re-enter new password: &lt;– 再输入一次你设置的密码</span><br><span class="line">Remove anonymous users? [Y/n] &lt;– 是否删除匿名用户，回车</span><br><span class="line">Disallow root login remotely? [Y/n] &lt;–是否禁止root远程登录，回车</span><br><span class="line">Remove test database and access to it? [Y/n] &lt;– 是否删除test数据库，回车</span><br><span class="line">Reload privilege tables now? [Y/n] &lt;– 是否重新加载权限表，回车</span><br></pre></td></tr></table></figure>
+
+
+<ul>
+<li>授权访问用户</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql -uroot -p -h localhost -P 3306</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>授权root用户远程访问</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mysql &gt; GRANT ALL PRIVILEGES ON *.* TO &#x27;root&#x27;@&#x27;%&#x27; IDENTIFIED BY &#x27;123456&#x27; WITH GRANT OPTION;</span><br><span class="line">mysql &gt; flush PRIVILEGES;</span><br></pre></td></tr></table></figure>
+
+<p>这样就设置了远程root用户，密码是123456</p>
+<ul>
+<li>创建test用户并授权本地访问</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">mysql &gt; GRANT ALL PRIVILEGES ON *.* TO &#x27;test&#x27;@localhost IDENTIFIED BY &#x27;123456&#x27; WITH GRANT OPTION;</span><br><span class="line">mysql &gt; flush PRIVILEGES;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>登录数据库</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql -utest -p123456 -h localhost -P 3306</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>创建数据库</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql &gt; create database webasenodemanager;</span><br></pre></td></tr></table></figure>
+
+<h3 id="安装Python-3-x"><a href="#安装Python-3-x" class="headerlink" title="安装Python 3.x"></a>安装Python 3.x</h3><p>python版本要求使用python3.x, 推荐使用python3.6及以上版本</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sudo yum install -y python36</span><br><span class="line">sudo yum install -y python36-pip</span><br></pre></td></tr></table></figure>
+
+<h3 id="安装PyMySQL"><a href="#安装PyMySQL" class="headerlink" title="安装PyMySQL"></a>安装PyMySQL</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo pip3 install PyMySQL</span><br></pre></td></tr></table></figure>
+
+<h3 id="检查服务器网络策略"><a href="#检查服务器网络策略" class="headerlink" title="检查服务器网络策略"></a>检查服务器网络策略</h3><p>网络策略检查：</p>
+<ul>
+<li><strong>开放WeBASE管理平台端口</strong>：检查webase-web管理平台页面的端口<code>webPort</code>(默认为5000)在服务器的网络安全组中是否设置为<strong>开放</strong>。如，云服务厂商如腾讯云，查看安全组设置，为webase-web开放5000端口。<strong>若端口未开放，将导致浏览器无法访问WeBASE服务页面</strong></li>
+<li><strong>开放节点前置端口</strong>：如果希望通过浏览器直接访问webase-front节点前置的页面，则需要开放节点前置端口<code>frontPort</code>（默认5002）；由于节点前置直连节点，<strong>不建议对公网开放节点前置端口</strong>，建议按需开放</li>
+</ul>
+<h2 id="拉取部署脚本"><a href="#拉取部署脚本" class="headerlink" title="拉取部署脚本"></a>拉取部署脚本</h2><p>获取部署安装包：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">wget https://github.com/WeBankBlockchain/WeBASELargeFiles/releases/download/v1.5.5/webase-deploy.zip</span><br></pre></td></tr></table></figure>
+
+<p>解压安装包：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">unzip webase-deploy.zip</span><br></pre></td></tr></table></figure>
+
+<p>进入目录：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cd webase-deploy</span><br></pre></td></tr></table></figure>
+
+<h2 id="修改配置"><a href="#修改配置" class="headerlink" title="修改配置"></a>修改配置</h2><p>mysql数据库需提前安装，已安装直接配置即可。<br>修改配置文件（<code>vi common.properties</code>）；</p>
+<p>一键部署支持使用已有链或者搭建新链。通过参数”if.exist.fisco”配置是否使用已有链，以下配置二选一即可：</p>
+<ul>
+<li>当配置”yes”时，需配置已有链的路径<code>fisco.dir</code>。路径下要存在sdk目录，sdk目录中包含ca.crt, sdk.crt, sdk.key及gm目录，gm目录中包含国密SSL所需证书，包含gmca.crt、gmsdk.crt、gmsdk.key、gmensdk.crt和gmensdk.key</li>
+<li>当配置”no”时，需配置节点fisco版本和节点安装个数，搭建的新链默认两个群组</li>
+</ul>
+<p>服务端口不能小于1024</p>
+<p>部署时，修改 <code>common.properties</code> 配置文件</p>
+<figure class="highlight properties"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># WeBASE子系统的最新版本(v1.1.0或以上版本)</span></span><br><span class="line"><span class="attr">webase.web.version</span>=<span class="string">v1.5.5</span></span><br><span class="line"><span class="attr">webase.mgr.version</span>=<span class="string">v1.5.5</span></span><br><span class="line"><span class="attr">webase.sign.version</span>=<span class="string">v1.5.5</span></span><br><span class="line"><span class="attr">webase.front.version</span>=<span class="string">v1.5.5</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">#####################################################################</span></span><br><span class="line"><span class="comment">## 使用Docker启用Mysql服务，则需要配置以下值</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 1: enable mysql in docker</span></span><br><span class="line"><span class="comment"># 0: mysql run in host, required fill in the configuration of webase-node-mgr and webase-sign</span></span><br><span class="line"><span class="attr">docker.mysql</span>=<span class="string">1</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># if [docker.mysql=1], mysql run in host (only works in [installDockerAll])</span></span><br><span class="line"><span class="comment"># run mysql 5.6 by docker</span></span><br><span class="line"><span class="attr">docker.mysql.port</span>=<span class="string">23306</span></span><br><span class="line"><span class="comment"># default user [root]</span></span><br><span class="line"><span class="attr">docker.mysql.password</span>=<span class="string">123456</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">#####################################################################</span></span><br><span class="line"><span class="comment">## 不使用Docker启动Mysql，则需要配置以下值</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 节点管理子系统mysql数据库配置</span></span><br><span class="line"><span class="attr">mysql.ip</span>=<span class="string">127.0.0.1</span></span><br><span class="line"><span class="attr">mysql.port</span>=<span class="string">3306</span></span><br><span class="line"><span class="attr">mysql.user</span>=<span class="string">dbUsername</span></span><br><span class="line"><span class="attr">mysql.password</span>=<span class="string">dbPassword</span></span><br><span class="line"><span class="attr">mysql.database</span>=<span class="string">webasenodemanager</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 签名服务子系统mysql数据库配置</span></span><br><span class="line"><span class="attr">sign.mysql.ip</span>=<span class="string">localhost</span></span><br><span class="line"><span class="attr">sign.mysql.port</span>=<span class="string">3306</span></span><br><span class="line"><span class="attr">sign.mysql.user</span>=<span class="string">dbUsername</span></span><br><span class="line"><span class="attr">sign.mysql.password</span>=<span class="string">dbPassword</span></span><br><span class="line"><span class="attr">sign.mysql.database</span>=<span class="string">webasesign</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 节点前置子系统h2数据库名和所属机构</span></span><br><span class="line"><span class="attr">front.h2.name</span>=<span class="string">webasefront</span></span><br><span class="line"><span class="attr">front.org</span>=<span class="string">fisco</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># WeBASE管理平台服务端口</span></span><br><span class="line"><span class="attr">web.port</span>=<span class="string">5000</span></span><br><span class="line"><span class="comment"># 启用移动端管理平台 (0: disable, 1: enable)</span></span><br><span class="line"><span class="attr">web.h5.enable</span>=<span class="string">1</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 节点管理子系统服务端口</span></span><br><span class="line"><span class="attr">mgr.port</span>=<span class="string">5001</span></span><br><span class="line"><span class="comment"># 节点前置子系统端口</span></span><br><span class="line"><span class="attr">front.port</span>=<span class="string">5002</span></span><br><span class="line"><span class="comment"># 签名服务子系统端口</span></span><br><span class="line"><span class="attr">sign.port</span>=<span class="string">5004</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 节点监听Ip</span></span><br><span class="line"><span class="attr">node.listenIp</span>=<span class="string">127.0.0.1</span></span><br><span class="line"><span class="comment"># 节点p2p端口</span></span><br><span class="line"><span class="attr">node.p2pPort</span>=<span class="string">30300</span></span><br><span class="line"><span class="comment"># 节点链上链下端口</span></span><br><span class="line"><span class="attr">node.channelPort</span>=<span class="string">20200</span></span><br><span class="line"><span class="comment"># 节点rpc端口</span></span><br><span class="line"><span class="attr">node.rpcPort</span>=<span class="string">8545</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 加密类型 (0: ECDSA算法, 1: 国密算法)</span></span><br><span class="line"><span class="attr">encrypt.type</span>=<span class="string">0</span></span><br><span class="line"><span class="comment"># SSL连接加密类型 (0: ECDSA SSL, 1: 国密SSL)</span></span><br><span class="line"><span class="comment"># 只有国密链才能使用国密SSL</span></span><br><span class="line"><span class="attr">encrypt.sslType</span>=<span class="string">0</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 是否使用已有的链（yes/no）</span></span><br><span class="line"><span class="attr">if.exist.fisco</span>=<span class="string">no</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 使用已有链时需配置</span></span><br><span class="line"><span class="comment"># 已有链的路径，start_all.sh脚本所在路径</span></span><br><span class="line"><span class="comment"># 路径下要存在sdk目录（sdk目录中包含了SSL所需的证书，即ca.crt、sdk.crt、sdk.key和gm目录（包含国密SSL证书，gmca.crt、gmsdk.crt、gmsdk.key、gmensdk.crt和gmensdk.key）</span></span><br><span class="line"><span class="attr">fisco.dir</span>=<span class="string">/data/app/nodes/127.0.0.1</span></span><br><span class="line"><span class="comment"># 前置所连接节点，在127.0.0.1目录中的节点中的一个</span></span><br><span class="line"><span class="comment"># 节点路径下要存在conf文件夹，conf里存放节点证书（ca.crt、node.crt和node.key）</span></span><br><span class="line"><span class="attr">node.dir</span>=<span class="string">node0</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment"># 搭建新链时需配置</span></span><br><span class="line"><span class="comment"># FISCO-BCOS版本</span></span><br><span class="line"><span class="attr">fisco.version</span>=<span class="string">v2.11.0</span></span><br><span class="line"><span class="comment"># 搭建节点个数（默认两个）</span></span><br><span class="line"><span class="attr">node.counts</span>=<span class="string">nodeCounts</span></span><br></pre></td></tr></table></figure>
+
+<p>上述配置文件中记得将以下两项改成mysql数据库的用户名和密码</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sign.mysql.user=dbUsername</span><br><span class="line">sign.mysql.password=dbPassword</span><br></pre></td></tr></table></figure>
+<h2 id="部署"><a href="#部署" class="headerlink" title="部署"></a>部署</h2><ul>
+<li>执行installAll命令，部署服务将自动部署FISCO BCOS节点，并部署 WeBASE 中间件服务，包括签名服务（sign）、节点前置（front）、节点管理服务（node-mgr）、节点管理前端（web）</li>
+</ul>
+<p><strong>备注：</strong></p>
+<ul>
+<li>部署脚本会拉取相关安装包进行部署，需保持网络畅通</li>
+<li>首次部署需要下载编译包和初始化数据库，重复部署时可以根据提示不重复操作</li>
+<li>部署过程中出现报错时，可根据错误提示进行操作，或根据本文档中的<a target="_blank" rel="noopener" href="https://webasedoc.readthedocs.io/zh-cn/latest/docs/WeBASE/install.html#q&a">常见问题</a>进行排查</li>
+<li><strong>不要用sudo执行脚本</strong>，例如<code>sudo python3 deploy.py installAll</code>（sudo会导致无法获取当前用户的环境变量如JAVA_HOME）</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 部署并启动所有服务</span></span><br><span class="line">python3 deploy.py installAll</span><br></pre></td></tr></table></figure>
+
+<p>部署完成后可以看到<code>deploy has completed</code>的日志：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">$ python3 deploy.py installWeBASE</span><br><span class="line">...</span><br><span class="line">============================================================</span><br><span class="line">              _    _     ______  ___  _____ _____ </span><br><span class="line">             | |  | |    | ___ \/ _ \/  ___|  ___|</span><br><span class="line">             | |  | | ___| |_/ / /_\ \ `--.| |__  </span><br><span class="line">             | |/\| |/ _ | ___ |  _  |`--. |  __| </span><br><span class="line">             \ /\ |  __| |_/ | | | /\__/ | |___ </span><br><span class="line">              \/  \/ \___\____/\_| |_\____/\____/  </span><br><span class="line">...</span><br><span class="line">...</span><br><span class="line">============================================================</span><br><span class="line">==============      deploy has completed     ==============</span><br><span class="line">============================================================</span><br><span class="line">==============    webase-web version  v1.5.0        ========</span><br><span class="line">==============    webase-node-mgr version  v1.5.0   ========</span><br><span class="line">==============    webase-sign version  v1.5.0       ========</span><br><span class="line">============================================================</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>服务部署后，需要对各服务进行启停操作，可以使用以下命令：</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"># 可视化部署</span><br><span class="line">部署并启动可视化部署的所有服务  python3 deploy.py installWeBASE</span><br><span class="line">停止可视化部署的所有服务  python3 deploy.py stopWeBASE</span><br><span class="line">启动可视化部署的所有服务  python3 deploy.py startWeBASE</span><br><span class="line"># 各子服务启停</span><br><span class="line">启动WeBASE-Node-Manager: python3 deploy.py startManager</span><br><span class="line">停止WeBASE-Node-Manager: python3 deploy.py stopManager</span><br><span class="line">启动WeBASE-Web:          python3 deploy.py startWeb</span><br><span class="line">停止WeBASE-Web:          python3 deploy.py stopWeb</span><br><span class="line">启动WeBASE-Sign:        python3 deploy.py startSign</span><br><span class="line">停止WeBASE-Sign:        python3 deploy.py stopSign</span><br></pre></td></tr></table></figure>
+
+<h2 id="可视化部署节点"><a href="#可视化部署节点" class="headerlink" title="可视化部署节点"></a>可视化部署节点</h2><p>在部署完依赖服务后，使用浏览器，访问节点管理平台页面：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># 默认端口 5000</span><br><span class="line">http://&#123;deployIP&#125;:&#123;webPort&#125;</span><br><span class="line"># 我的测试环境是下面的地址</span><br><span class="line">http://192.168.201.133:500</span><br></pre></td></tr></table></figure>
+
+<p>然后用默认的用户名和密码登录 admin&#x2F;Abcd1234，第一次要求修改为自己的密码。</p>
+<p>注意：这里有一个bug。当创建私钥的时候会抛出异常。这是因为后天数据库tb_user表中缺少private_key字段。目前官方还没有解决这个问题，但是GitHub中提到这是因为签名服务和节点管理服务共用了一个数据库导致的。</p>
+</div><div class="tags"><ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fisco-bcos/" rel="tag">fisco bcos</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E5%8C%BA%E5%9D%97%E9%93%BE/" rel="tag">区块链</a></li></ul></div><div class="post-nav"><a class="pre" href="/2025/10/20/64-%E5%AE%89%E8%A3%85Gradle-6-3/">64 安装Gradle 6.3</a><a class="next" href="/2025/10/16/63%20%E5%85%B3%E4%BA%8E%E6%96%B0%E9%97%BB%EF%BC%9A%E3%80%8A%E5%8C%97%E5%A4%A7%E6%88%90%E5%8A%9F%E7%A0%94%E5%88%B6%E5%87%BA%E6%96%B0%E5%9E%8B%E8%8A%AF%E7%89%87%EF%BC%8C%E7%AE%97%E5%8A%9B%E5%8F%AF%E8%B6%85%E9%A1%B6%E7%BA%A7GPU1000%E5%80%8D%E3%80%8B%E7%9A%84%E8%A7%A3%E8%AF%BB/">关于新闻：《北大成功研制出新型芯片，算力可超顶级GPU1000倍》的解读</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><div class="search-form"><input id="local-search-input" placeholder="Search" type="text" name="q" results="0"/><div id="local-search-result"></div></div></div><div class="widget"><div class="author-info"><a class="info-avatar" href="/about/" title="关于"><img class="nofancybox" src="/img/avatar.png"/></a><p>重要的不是发生了什么，而是你如何应对它。</p></div></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E6%80%9D%E8%80%83/">思考</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E6%8B%BE%E7%A9%97%E9%9B%86/">拾穗集</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%AE%A1%E7%90%86/">管理</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E7%BC%96%E7%A8%8B/">编程</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E8%AE%BE%E8%AE%A1/">设计</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E8%AF%BB%E4%B9%A6/">读书</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/python/" style="font-size: 15px;">python</a> <a href="/tags/uv/" style="font-size: 15px;">uv</a> <a href="/tags/ai/" style="font-size: 15px;">ai</a> <a href="/tags/%E5%B7%A5%E4%BD%9C%E6%B5%81/" style="font-size: 15px;">工作流</a> <a href="/tags/%E6%A8%A1%E5%9D%97%E8%80%A6%E5%90%88/" style="font-size: 15px;">模块耦合</a> <a href="/tags/%E8%AE%A4%E7%9F%A5/" style="font-size: 15px;">认知</a> <a href="/tags/java/" style="font-size: 15px;">java</a> <a href="/tags/%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F/" style="font-size: 15px;">设计模式</a> <a href="/tags/%E7%B3%BB%E7%BB%9F%E5%88%86%E6%9E%90%E5%B8%88/" style="font-size: 15px;">系统分析师</a> <a href="/tags/%E9%9C%80%E6%B1%82%E5%88%86%E6%9E%90/" style="font-size: 15px;">需求分析</a> <a href="/tags/%E9%9C%80%E6%B1%82%E8%8E%B7%E5%8F%96/" style="font-size: 15px;">需求获取</a> <a href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/" style="font-size: 15px;">数据库</a> <a href="/tags/%E8%8C%83%E5%BC%8F/" style="font-size: 15px;">范式</a> <a href="/tags/%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86/" style="font-size: 15px;">项目管理</a> <a href="/tags/%E6%80%BB%E6%97%B6%E5%B7%AE/" style="font-size: 15px;">总时差</a> <a href="/tags/%E8%87%AA%E7%94%B1%E6%97%B6%E5%B7%AE/" style="font-size: 15px;">自由时差</a> <a href="/tags/%E7%9F%A5%E4%B9%8E/" style="font-size: 15px;">知乎</a> <a href="/tags/%E8%BD%AC%E8%BD%BD/" style="font-size: 15px;">转载</a> <a href="/tags/%E5%86%99%E4%BD%9C/" style="font-size: 15px;">写作</a> <a href="/tags/%E4%BA%A7%E5%93%81/" style="font-size: 15px;">产品</a> <a href="/tags/%E5%A5%B3%E5%84%BF/" style="font-size: 15px;">女儿</a> <a href="/tags/%E6%88%90%E5%8A%9F/" style="font-size: 15px;">成功</a> <a href="/tags/%E6%A6%82%E7%8E%87/" style="font-size: 15px;">概率</a> <a href="/tags/%E9%80%89%E6%8B%A9/" style="font-size: 15px;">选择</a> <a href="/tags/%E9%BB%84%E4%BB%81%E5%8B%8B/" style="font-size: 15px;">黄仁勋</a> <a href="/tags/AI/" style="font-size: 15px;">AI</a> <a href="/tags/%E7%AE%97%E6%B3%95/" style="font-size: 15px;">算法</a> <a href="/tags/%E7%BC%96%E7%A8%8B/" style="font-size: 15px;">编程</a> <a href="/tags/pip/" style="font-size: 15px;">pip</a> <a href="/tags/CogTTS/" style="font-size: 15px;">CogTTS</a> <a href="/tags/Firecrawl/" style="font-size: 15px;">Firecrawl</a> <a href="/tags/Office/" style="font-size: 15px;">Office</a> <a href="/tags/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91/" style="font-size: 15px;">插件开发</a> <a href="/tags/%E6%95%B0%E5%AD%A6/" style="font-size: 15px;">数学</a> <a href="/tags/Docker/" style="font-size: 15px;">Docker</a> <a href="/tags/%E5%8C%BA%E5%9D%97%E9%93%BE/" style="font-size: 15px;">区块链</a> <a href="/tags/fisco-bcos/" style="font-size: 15px;">fisco-bcos</a> <a href="/tags/fisco-bcos/" style="font-size: 15px;">fisco bcos</a> <a href="/tags/%E8%8A%AF%E7%89%87/" style="font-size: 15px;">芯片</a> <a href="/tags/Java/" style="font-size: 15px;">Java</a> <a href="/tags/%E9%9D%92%E6%98%A5%E6%9C%9F/" style="font-size: 15px;">青春期</a> <a href="/tags/%E6%95%99%E8%82%B2/" style="font-size: 15px;">教育</a> <a href="/tags/%E5%8D%B1%E9%99%A9%E7%9A%84%E4%BA%8B/" style="font-size: 15px;">危险的事</a> <a href="/tags/%E4%BA%BA%E7%94%9F/" style="font-size: 15px;">人生</a> <a href="/tags/%E4%BB%BB%E5%8A%A1/" style="font-size: 15px;">任务</a> <a href="/tags/%E8%87%AA%E7%94%B1/" style="font-size: 15px;">自由</a> <a href="/tags/%E7%A4%BE%E7%A7%91/" style="font-size: 15px;">社科</a> <a href="/tags/%E4%BA%A4%E5%8F%8B/" style="font-size: 15px;">交友</a> <a href="/tags/%E6%97%A5%E6%9C%AC/" style="font-size: 15px;">日本</a> <a href="/tags/%E7%BB%8F%E6%B5%8E/" style="font-size: 15px;">经济</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2025/11/18/78-%E4%B8%8D%E7%94%A8%E9%80%BC%E8%87%AA%E5%B7%B1%E5%90%88%E7%BE%A4%EF%BC%8C%E7%9C%9F%E7%9A%84/">不用逼自己合群，真的</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/11/13/77-%E3%80%8A%E4%BB%A5%E6%97%A5%E4%B8%BA%E9%89%B4%EF%BC%9A%E8%A1%B0%E9%80%80%E6%97%B6%E4%BB%A3%E7%94%9F%E5%AD%98%E6%8C%87%E5%8D%97%E3%80%8B%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/">《以日为鉴：衰退时代生存指南》读书笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/11/13/76-%E3%80%8A%E5%87%A1%E4%BA%8B%E5%8F%91%E7%94%9F%EF%BC%8C%E7%9A%86%E6%9C%89%E5%88%A9%E4%BA%8E%E6%88%91%E3%80%8B%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/">《凡事发生，皆有利于我》读书笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/11/03/75%E3%80%8A%E8%A7%A3%E7%A0%81%E9%9D%92%E6%98%A5%E6%9C%9F%E3%80%8B%E7%AC%AC%E4%B8%83%E7%AB%A0%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/">《解码青春期》第七章阅读笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/31/74-%E5%A5%B3%E5%84%BF%E4%BD%A0%E5%A5%BD%EF%BC%9A%E6%88%91%E4%BB%AC%E6%9D%A5%E8%81%8A%E8%81%8A%E8%87%AA%E7%A7%81%E4%B8%8E%E6%97%A0%E7%A7%81/">女儿你好：我们来聊聊“自私”与“无私”</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/31/72-%E3%80%8A%E8%A7%A3%E7%A0%81%E9%9D%92%E6%98%A5%E6%9C%9F%E3%80%8B%E7%AC%AC%E5%85%AD%E7%AB%A0%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/">《解码青春期》第六章阅读笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/31/73-%E5%A5%B3%E5%84%BF%E4%BD%A0%E5%A5%BD%EF%BC%9A%E5%A6%82%E6%9E%9C%E5%88%AB%E4%BA%BA%E6%AC%BA%E9%AA%97%E4%BA%86%E4%BD%A0%E8%AF%A5%E6%80%8E%E4%B9%88%E5%8A%9E%EF%BC%9F/">女儿你好：如果别人欺骗了你该怎么办？</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/30/71-%E3%80%8A%E8%A7%A3%E7%A0%81%E9%9D%92%E6%98%A5%E6%9C%9F%E3%80%8B%E7%AC%AC%E4%BA%94%E7%AB%A0%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/">《解码青春期》第五章阅读笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/29/70-%E3%80%8A%E8%A7%A3%E7%A0%81%E9%9D%92%E6%98%A5%E6%9C%9F%E3%80%8B%E7%AC%AC%E5%9B%9B%E7%AB%A0%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/">《解码青春期》第四章阅读笔记</a></li><li class="post-list-item"><a class="post-list-link" href="/2025/10/28/69-%E3%80%8A%E8%A7%A3%E7%A0%81%E9%9D%92%E6%98%A5%E6%9C%9F%E3%80%8B%E7%AC%AC%E4%B8%89%E7%AB%A0%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/">《解码青春期》第三章阅读笔记</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="https://zhuanlan.zhihu.com/column/c_1933254499415359834" title="知乎专栏" target="_blank">知乎专栏</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2025 <a href="/." rel="nofollow">解.方.程.</a><a rel="nofollow" target="_blank" href="https://beian.miit.gov.cn/">京ICP备2024100693号-1</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="https://unpkg.com/@fancyapps/fancybox/dist/jquery.fancybox.min.css"><link rel="stylesheet" type="text/css" href="/css/search.css?v=1.0.0"><script type="text/javascript" src="/js/search.js?v=1.0.0"></script><script>var search_path = 'search.xml';
+if (search_path.length == 0) {
+  search_path = 'search.xml';
+}
+var path = '/' + search_path;
+searchFunc(path, 'local-search-input', 'local-search-result');
+</script><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功！"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+  });
+</script><script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-MML-AM_CHTML" async></script><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
